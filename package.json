@@ -1,0 +1,19 @@
+{
+  "name": "dnp-eticket-autofill",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "login": "node scripts/login.js",
+    "start": "node src/server.js",
+    "restart": "lsof -ti:5179 | xargs kill -9 2>/dev/null; sleep 1; node src/server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "express": "^5.2.1",
+    "playwright": "^1.60.0"
+  }
+}

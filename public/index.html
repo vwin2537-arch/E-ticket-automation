@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>จองบัตรเอราวัณ — มุกช่วยกรอก</title>
+<style>
+  * { box-sizing: border-box; font-family: -apple-system, "Sukhumvit Set", "Helvetica Neue", sans-serif; }
+  body { margin: 0; background: #eef2f0; color: #233; padding: 24px; }
+  .card { max-width: 620px; margin: 0 auto; background: #fff; border-radius: 16px;
+          box-shadow: 0 4px 24px rgba(0,0,0,.08); overflow: hidden; }
+  .head { background: #2e8b57; color: #fff; padding: 18px 24px; }
+  .head h1 { margin: 0; font-size: 20px; }
+  .head p { margin: 4px 0 0; opacity: .85; font-size: 13px; }
+  .body { padding: 22px 24px; }
+  label { display: block; font-size: 13px; font-weight: 600; margin: 14px 0 5px; }
+  input, select { width: 100%; padding: 10px 12px; border: 1px solid #cdd6d2; border-radius: 9px;
+                  font-size: 15px; background: #fff; }
+  input:focus, select:focus { outline: none; border-color: #2e8b57; }
+  .row { display: flex; gap: 12px; }
+  .row > div { flex: 1; }
+  .sec { margin-top: 22px; border-top: 1px dashed #d4ddd8; padding-top: 14px; }
+  .sec h2 { font-size: 15px; margin: 0 0 10px; }
+  .trav { display: flex; align-items: center; gap: 10px; padding: 7px 0; }
+  .trav .name { flex: 1; font-size: 14px; }
+  .trav .price { width: 70px; text-align: right; color: #777; font-size: 13px; }
+  .trav .qty { width: 64px; }
+  .trav .qty input { text-align: center; padding: 7px; }
+  .trav .del { color: #d9534f; cursor: pointer; font-size: 18px; border: none; background: none; }
+  .veh { display: flex; gap: 8px; align-items: center; padding: 5px 0; }
+  .veh select { flex: 2; }
+  .veh input { flex: 1; }
+  .veh .del { color: #d9534f; cursor: pointer; font-size: 18px; border: none; background: none; padding: 0 2px; }
+  .addbtn { margin-top: 8px; background: #f0f5f2; border: 1px dashed #8bbfa3; color: #2e8b57;
+            padding: 9px; border-radius: 9px; width: 100%; cursor: pointer; font-size: 14px; }
+  .total { background: #f4f9f6; border-radius: 11px; padding: 14px 16px; margin-top: 18px;
+           display: flex; justify-content: space-between; align-items: center; }
+  .total b { font-size: 20px; color: #2e8b57; }
+  .go { width: 100%; margin-top: 16px; background: #2e8b57; color: #fff; border: none;
+        padding: 15px; border-radius: 11px; font-size: 17px; font-weight: 700; cursor: pointer; }
+  .go:disabled { background: #9bb3a8; cursor: wait; }
+  .clear { width: 100%; margin-top: 9px; background: #fff; color: #778; border: 1px solid #cdd6d2;
+           padding: 11px; border-radius: 11px; font-size: 14px; cursor: pointer; }
+  .clear:hover { background: #f4f6f5; color: #556; }
+  .dry { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 13px; color: #667; }
+  .dry input { width: auto; }
+  #msg { margin-top: 14px; padding: 12px 14px; border-radius: 9px; font-size: 14px; display: none; }
+  #msg.ok { background: #e3f3ea; color: #1d6e42; display: block; }
+  #msg.err { background: #fbe6e6; color: #a33; display: block; }
+  .hint { font-size: 12px; color: #889; margin-top: 4px; }
+  .lstat { font-size: 13px; padding: 9px 12px; border-radius: 9px; margin-bottom: 6px;
+           display: flex; align-items: center; gap: 8px; }
+  .lstat.checking { background: #eef1f4; color: #667; }
+  .lstat.ok  { background: #e3f3ea; color: #1d6e42; }
+  .lstat.bad { background: #fbe6e6; color: #a33; }
+  .lstat .recheck { margin-left: auto; border: none; background: rgba(0,0,0,.07);
+                    border-radius: 7px; padding: 4px 10px; cursor: pointer; font-size: 12px; color: inherit; }
+  /* แถบสถานะ warm pool — บอกว่าอุ่นแท็บไว้กี่ใบ (จองวันนี้ = ทันที) */
+  .warm { font-size: 12px; padding: 7px 12px; border-radius: 9px; margin-bottom: 10px;
+          display: flex; align-items: center; gap: 8px; background: #fff6e9; color: #9a6a1a; }
+  .warm.full { background: #e3f3ea; color: #1d6e42; }
+  .warm.cold { background: #eef1f4; color: #667; }
+  .warm .dots { margin-left: auto; letter-spacing: 3px; font-size: 11px; }
+  /* popup แจ้งเตือนระหว่างมุกกำลังกรอก */
+  #overlay { position: fixed; inset: 0; background: linear-gradient(160deg,#2e8b57,#1d6e42);
+             display: none; align-items: center; justify-content: center; z-index: 999; }
+  #overlay.show { display: flex; }
+  .pop { background: #fff; border-radius: 18px; padding: 32px 36px; text-align: center;
+         box-shadow: 0 10px 40px rgba(0,0,0,.25); max-width: 320px; }
+  .pop .spin { width: 46px; height: 46px; margin: 0 auto 18px; border: 5px solid #dcebe2;
+               border-top-color: #2e8b57; border-radius: 50%; animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .pop h3 { margin: 0 0 6px; font-size: 17px; color: #2e8b57; }
+  .pop p { margin: 0; font-size: 13px; color: #778; line-height: 1.5; }
+  /* progress bar ใต้ข้อความ — แถบเดียวแบบเปอร์เซ็นต์โหลด */
+  .pbar { margin-top: 18px; height: 8px; background: #e3ece7; border-radius: 99px; overflow: hidden; }
+  .pbar > i { display: block; height: 100%; width: 0%;
+              background: linear-gradient(90deg,#2e8b57,#52c98a);
+              border-radius: 99px; transition: width .25s ease; position: relative; }
+  /* แถบเลื่อนแสง shimmer ให้ดูมีชีวิต */
+  .pbar > i::after { content: ''; position: absolute; inset: 0;
+              background: linear-gradient(90deg,transparent,rgba(255,255,255,.5),transparent);
+              animation: shimmer 1.2s linear infinite; }
+  @keyframes shimmer { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+  .pct { margin-top: 8px; font-size: 12px; font-weight: 600; color: #2e8b57; }
+</style>
+</head>
+<body>
+<div id="overlay">
+  <div class="pop">
+    <div class="spin"></div>
+    <h3>ระบบจองบัตรเข้าอุทยานแห่งชาติเอราวัณ</h3>
+    <p>กำลังดำเนินการบันทึกข้อมูลการเข้าใช้บริการ<br>กรุณารอสักครู่...</p>
+    <div class="pbar"><i id="pbarFill"></i></div>
+    <div class="pct" id="pbarPct">0%</div>
+  </div>
+</div>
+<div class="card">
+  <div class="head">
+    <h1>🎟️ จองบัตรเข้าอุทยานเอราวัณ</h1>
+    <p>กรอกแค่ที่จำเป็น แล้วให้มุกไปกรอกในระบบ DNP ให้เอง</p>
+  </div>
+  <div class="body">
+    <div id="loginStatus" class="lstat checking">⏳ กำลังเช็กสถานะเข้าระบบ DNP...</div>
+    <div id="warmStatus" class="warm cold">🔥 กำลังเช็กการอุ่นเครื่อง...</div>
+    <div class="row">
+      <div>
+        <label>วันเข้าพื้นที่</label>
+        <input type="date" id="date">
+        <div class="hint">จองล่วงหน้าได้ 7 วัน • cutoff 15:30</div>
+      </div>
+      <div>
+        <label>รอบเวลา</label>
+        <select id="time"></select>
+      </div>
+    </div>
+    <div class="sec">
+      <h2>🚗 ยานพาหนะ (เพิ่มคันได้)</h2>
+      <div id="vehicles"></div>
+      <button type="button" class="addbtn" id="addVeh">➕ เพิ่มคัน</button>
+    </div>
+
+    <div class="sec">
+      <h2>👥 ผู้เดินทาง (ใส่จำนวน)</h2>
+      <div id="travelers"></div>
+      <select id="addType" class="addbtn"></select>
+      <div id="extra"></div>
+    </div>
+
+    <div class="total">
+      <span><span id="cntPeople">0</span> คน</span>
+      <span>รวมเป็นเงิน <b id="sum">0</b> บาท</span>
+    </div>
+
+    <label class="dry"><input type="checkbox" id="dryRun"> โหมดทดสอบ (กรอกให้ดูเฉยๆ ไม่กด "ต่อไป")</label>
+    <button class="go" id="go">✓ ยืนยัน — ให้มุกกรอกให้</button>
+    <button class="clear" id="clear" type="button">🧹 ล้างฟอร์ม — เริ่มใบใหม่ <span style="opacity:.6">(Esc)</span></button>
+    <div id="msg"></div>
+  </div>
+</div>
+
+<script>
+let CFG = null;
+const $ = (id) => document.getElementById(id);
+const fmt = (n) => n.toLocaleString('th-TH');
+// วันที่แบบ YYYY-MM-DD ตามเวลาท้องถิ่น (ไม่ใช่ UTC — กันวันเพี้ยนช่วงเช้ามืด)
+const localISO = (d) => { const x = new Date(d); x.setMinutes(x.getMinutes() - x.getTimezoneOffset()); return x.toISOString().slice(0, 10); };
+// นาทีของเวลา "สิ้นสุด" ในรอบ เช่น '08:00 - 11:45' → 11*60+45
+const slotEndMin = (slot) => { const [h, m] = slot.split('-').pop().trim().split(':').map(Number); return h * 60 + m; };
+// ปิดรอบในหน้ากากก่อนเวลาสิ้นสุดจริง N นาที — DNP ตัดรอบ/เอา option ออกก่อน 11:45 เป๊ะ ทำให้กรอกไม่ได้
+// (เคยเจอ: เลือกรอบเช้าตอน 11:43 → DNP เอา option ออก → บอทเลือกไม่ได้ ค้างหน้าเลือกวัน) — ปรับค่าได้ตรงนี้
+const SLOT_CLOSE_BUFFER_MIN = 10;
+
+async function init() {
+  CFG = await (await fetch('/api/config')).json();
+
+  $('date').min = localISO(new Date());
+  $('date').onchange = () => { rebuildTimeSlots(); renderWarm(); }; // เปลี่ยนวัน → คิดรอบเวลา + อัปเดตสถานะ warm
+  $('addVeh').onclick = () => { $('vehicles').appendChild(vehRow('รถยนต์ 4 ล้อ', true)); recalc(); };
+
+  // dropdown เพิ่มประเภทอื่น
+  const add = $('addType');
+  add.add(new Option('➕ เพิ่มประเภทอื่น (พระ/ผู้สูงอายุ/นักศึกษา…)', ''));
+  CFG.travelers.filter((x) => !x.featured).forEach((x) => add.add(new Option(`${x.label} — ${x.price}฿`, x.id)));
+  add.onchange = () => {
+    if (!add.value) return;
+    const x = CFG.travelers.find((c) => c.id === add.value);
+    $('extra').appendChild(travRow(x, true));
+    add.value = '';
+    recalc();
+  };
+  $('clear').onclick = resetForm;
+  // ปุ่มลัด: Esc = ล้างฟอร์ม — ยกเว้นตอน popup กรอกเปิดอยู่ (กันล้างกลางคัน)
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !$('overlay').classList.contains('show')) resetForm();
+  });
+
+  resetForm();        // วันที่/รถ/ผู้เดินทาง เป็นค่าเริ่มต้น
+  checkLoginStatus(); // เช็กสถานะ login เบื้องหลัง (ไม่บล็อกหน้า)
+  pollWarm();                       // เช็กสถานะ warm pool ทันที
+  setInterval(pollWarm, 2500);      // แล้วอัปเดตทุก 2.5 วิ (เห็น 1/3 → 2/3 → 3/3)
+}
+
+// ล้างฟอร์มกลับเป็นค่าเริ่มต้น (วันนี้ / รถ 1 คัน / คน 0) — ใช้ตอนโหลดหน้า + ปุ่ม "ล้างฟอร์ม"
+// ไม่แตะ event handler/options/polling (ผูกครั้งเดียวใน init) เลยไม่ต้องโหลดหน้าใหม่
+function resetForm() {
+  $('date').value = localISO(new Date());
+  $('vehicles').innerHTML = ''; $('vehicles').appendChild(vehRow('รถยนต์ 4 ล้อ'));
+  $('travelers').innerHTML = '';
+  CFG.travelers.filter((x) => x.featured).forEach((x) => $('travelers').appendChild(travRow(x)));
+  $('extra').innerHTML = '';
+  $('addType').value = '';
+  $('dryRun').checked = false;
+  $('msg').style.display = 'none';
+  rebuildTimeSlots();
+  recalc();
+  renderWarm();
+}
+
+// สถานะ warm pool — warm อุ่นไว้ "เฉพาะวันนี้" เลย render ตามวันที่ที่เลือก
+let warmCache = null;
+function renderWarm() {
+  const box = $('warmStatus');
+  if (!warmCache) return;
+  const { ready, warming, size, today, lastError } = warmCache;
+  if ($('date').value !== today) {
+    box.className = 'warm cold';
+    box.innerHTML = 'ℹ️ จองวันอื่น (ไม่ใช่วันนี้) — มุกเปิดสดให้ต่อครั้ง (~6 วิ) <span class="dots">warm = เฉพาะวันนี้</span>';
+    return;
+  }
+  if (lastError) {
+    box.className = 'warm';
+    box.innerHTML = '⚠️ อุ่นเครื่องไม่สำเร็จ — ' + lastError;
+    return;
+  }
+  const dots = '●'.repeat(ready) + '○'.repeat(Math.max(0, size - ready));
+  if (ready >= size) {
+    box.className = 'warm full';
+    box.innerHTML = `🔥 อุ่นเครื่องพร้อม — จองวันนี้ได้ทันที <span class="dots">${ready}/${size} ${dots}</span>`;
+  } else if (ready > 0) {
+    box.className = 'warm full';
+    box.innerHTML = `🔥 พร้อมจองทันที ${ready} แท็บ (กำลังอุ่นเพิ่ม…) <span class="dots">${ready}/${size} ${dots}</span>`;
+  } else {
+    box.className = 'warm';
+    box.innerHTML = `🔥 กำลังอุ่นเครื่อง… <span class="dots">${ready}/${size} ${dots}</span>`;
+  }
+}
+async function pollWarm() {
+  try { warmCache = await (await fetch('/api/pool-status')).json(); renderWarm(); } catch (e) { /* เงียบ ไม่บล็อกหน้า */ }
+}
+
+// เช็กว่ายังเข้าระบบ DNP อยู่ไหม แล้วโชว์ไฟสถานะ + คุมปุ่มยืนยัน
+// force=false (ตอนโหลดหน้า) → ใช้ผลที่ server cache ไว้ เร็ว ไม่เปิดเบราว์เซอร์ใหม่
+// force=true (กดปุ่มเช็กซ้ำ) → บังคับตรวจใหม่จริง
+async function checkLoginStatus(force = false) {
+  const box = $('loginStatus');
+  box.className = 'lstat checking';
+  box.innerHTML = '⏳ กำลังเช็กสถานะเข้าระบบ DNP...';
+  $('go').disabled = true;
+  try {
+    const { loggedIn } = await (await fetch('/api/login-status' + (force ? '?force=1' : ''))).json();
+    if (loggedIn) {
+      box.className = 'lstat ok';
+      box.innerHTML = '✅ เข้าระบบ DNP อยู่ — พร้อมจอง <button class="recheck" onclick="checkLoginStatus(true)">เช็กซ้ำ</button>';
+      $('go').disabled = false;
+    } else {
+      box.className = 'lstat bad';
+      box.innerHTML = '❌ ออกจากระบบแล้ว — ดับเบิลคลิก <b>เข้าระบบ DNP</b> ก่อนนะคะ <button class="recheck" onclick="checkLoginStatus(true)">เช็กซ้ำ</button>';
+      $('go').disabled = true;
+    }
+  } catch (e) {
+    // เช็กไม่ได้ ไม่บล็อกพี่วิน — ปล่อยให้ตอนกดจอง บอทเช็กเองอีกที
+    box.className = 'lstat checking';
+    box.innerHTML = '⚠️ เช็กสถานะไม่ได้ — กดจองได้เลย เดี๋ยวบอทเช็กให้อีกที <button class="recheck" onclick="checkLoginStatus(true)">เช็กซ้ำ</button>';
+    $('go').disabled = false;
+  }
+}
+
+// สร้างตัวเลือกรอบเวลาใหม่ตามวันที่ที่เลือก + เวลาปัจจุบัน
+// ถ้าเลือก "วันนี้" และใกล้เวลาสิ้นสุดของรอบ (เหลือ < BUFFER นาที) → ปิดรอบนั้น (เช่น เลย 11:35 = ปิดรอบเช้า)
+function rebuildTimeSlots() {
+  const sel = $('time');
+  const prev = sel.value;
+  sel.innerHTML = '';
+  const isToday = $('date').value === localISO(new Date());
+  const now = new Date();
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+
+  let firstOpen = null;
+  CFG.timeSlots.forEach((s) => {
+    const closed = isToday && nowMin >= slotEndMin(s) - SLOT_CLOSE_BUFFER_MIN;
+    const opt = new Option(closed ? `${s} (ปิดรับแล้ว)` : s, s);
+    opt.disabled = closed;
+    sel.add(opt);
+    if (!closed && firstOpen === null) firstOpen = s;
+  });
+
+  if (firstOpen === null) {
+    // วันนี้เลย 15:30 — ปิดรับทุกรอบแล้ว
+    sel.add(new Option('— วันนี้ปิดรับแล้ว เลือกวันอื่นนะคะ —', ''));
+    sel.value = '';
+  } else {
+    // คงค่าที่พี่วินเลือกไว้ถ้ายังเปิดอยู่ ไม่งั้นเด้งไปรอบที่เปิดรอบแรก
+    const prevStillOpen = CFG.timeSlots.includes(prev) && !(isToday && nowMin >= slotEndMin(prev) - SLOT_CLOSE_BUFFER_MIN);
+    sel.value = prevStillOpen ? prev : firstOpen;
+  }
+}
+
+function vehRow(selMatch, removable) {
+  const div = document.createElement('div');
+  div.className = 'veh';
+  const sel = document.createElement('select');
+  CFG.vehicles.forEach((v) => sel.add(new Option(`${v.label} — ${v.price}฿`, v.match)));
+  sel.value = selMatch;
+  sel.onchange = recalc;
+  const inp = document.createElement('input');
+  inp.type = 'text'; inp.placeholder = 'เลขทะเบียน (ไม่มีใส่ -)';
+  div.appendChild(sel); div.appendChild(inp);
+  if (removable) {
+    const del = document.createElement('button');
+    del.type = 'button'; del.className = 'del'; del.textContent = '✕';
+    del.onclick = () => { div.remove(); recalc(); };
+    div.appendChild(del);
+  }
+  return div;
+}
+
+function collectVehicles() {
+  return Array.from(document.querySelectorAll('.veh')).map((row) => ({
+    match: row.querySelector('select').value,
+    plate: row.querySelector('input').value.trim() || '-',
+  }));
+}
+
+function travRow(x, removable) {
+  const div = document.createElement('div');
+  div.className = 'trav';
+  div.dataset.id = x.id;
+  div.innerHTML =
+    `<span class="name">${x.label}</span>` +
+    `<span class="price">${x.price}฿</span>` +
+    `<span class="qty"><input type="number" min="0" value="0"></span>` +
+    (removable ? `<button class="del" title="ลบ">✕</button>` : `<span style="width:18px"></span>`);
+  div.querySelector('input').oninput = recalc;
+  if (removable) div.querySelector('.del').onclick = () => { div.remove(); recalc(); };
+  return div;
+}
+
+function collectTravelers() {
+  const out = [];
+  document.querySelectorAll('.trav').forEach((row) => {
+    const count = parseInt(row.querySelector('input').value || '0', 10);
+    if (count > 0) {
+      const c = CFG.travelers.find((t) => t.id === row.dataset.id);
+      out.push({ match: c.match, nationality: c.nationality, count, price: c.price });
+    }
+  });
+  return out;
+}
+
+function recalc() {
+  const tr = collectTravelers();
+  const people = tr.reduce((s, t) => s + t.count, 0);
+  let sum = tr.reduce((s, t) => s + t.count * t.price, 0);
+  sum += collectVehicles().reduce((s, vv) => {
+    const c = CFG.vehicles.find((x) => x.match === vv.match);
+    return s + (c ? c.price : 0);
+  }, 0);
+  $('cntPeople').textContent = people;
+  $('sum').textContent = fmt(sum);
+}
+// progress bar แบบ simulated — วิ่งเข้าใกล้ 90% นุ่มๆ (เร็วต้น ช้าปลาย) จนกว่า server จะตอบ
+let pTimer = null;
+function startProgress() {
+  let p = 0;
+  const fill = $('pbarFill'), pct = $('pbarPct');
+  fill.style.width = '0%'; pct.textContent = '0%';
+  clearInterval(pTimer);
+  pTimer = setInterval(() => {
+    p += (90 - p) * 0.06;          // asymptotic — ค่อยๆ เข้าใกล้ 90 ไม่มีวันถึง
+    fill.style.width = p.toFixed(1) + '%';
+    pct.textContent = Math.round(p) + '%';
+  }, 220);
+}
+function finishProgress() {
+  clearInterval(pTimer); pTimer = null;
+  $('pbarFill').style.width = '100%';
+  $('pbarPct').textContent = '100%';
+}
+$('go').onclick = async () => {
+  const travelers = collectTravelers();
+  const msg = $('msg');
+  if (travelers.length === 0) { msg.className = 'err'; msg.textContent = 'ยังไม่ได้ใส่จำนวนผู้เดินทางเลยค่ะ'; return; }
+  if (!$('time').value) { msg.className = 'err'; msg.textContent = 'วันที่เลือกปิดรับจองแล้ว เลือกวันอื่นนะคะ'; return; }
+
+  $('go').disabled = true; $('go').textContent = '⏳ มุกกำลังกรอกให้...';
+  $('overlay').classList.add('show');
+  startProgress();
+  msg.style.display = 'none';
+  try {
+    const r = await fetch('/api/book', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        date: $('date').value, timeSlot: $('time').value,
+        vehicles: collectVehicles(),
+        travelers, dryRun: $('dryRun').checked,
+      }),
+    });
+    const d = await r.json();
+    msg.className = d.ok ? 'ok' : 'err';
+    msg.textContent = d.ok ? '✅ ' + d.message : '❌ ' + d.error;
+  } catch (e) {
+    msg.className = 'err'; msg.textContent = '❌ เชื่อมต่อ server ไม่ได้: ' + e.message;
+  } finally {
+    finishProgress();
+    await new Promise((r) => setTimeout(r, 450)); // ให้เห็น 100% สักนิดก่อนปิด
+    $('overlay').classList.remove('show');
+    $('go').disabled = false; $('go').textContent = '✓ ยืนยัน — ให้มุกกรอกให้';
+  }
+};
+
+init();
+</script>
+</body>
+</html>

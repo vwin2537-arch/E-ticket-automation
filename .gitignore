@@ -1,0 +1,6 @@
+node_modules/
+auth/storageState.json
+auth/shot-*.png
+logs/usage.csv
+dnp-eticket-windows.zip
+*.DS_Store
