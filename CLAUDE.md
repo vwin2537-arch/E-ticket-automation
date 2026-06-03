@@ -16,6 +16,24 @@ npm run login   # ครั้งแรก/เมื่อ session หมด: �
 npm start       # เปิดหน้ากาก + อุ่น warm pool (เปิด POOL_SIZE แท็บกดการ์ด+เลือกวันนี้รอ — ใช้เวลา ~10วิ/แท็บ)
 npm run restart # แก้โค้ดแล้วเปิดใหม่ — ฆ่าตัวเก่าที่ถือ port ก่อน (อย่าใช้ start ซ้ำ เดี๋ยว port ชนตายเงียบ)
 ```
+
+## GitHub
+**Repo:** https://github.com/vwin2537-arch/E-ticket-automation
+
+```bash
+# push ครั้งแรก (ทำแล้ว)
+git remote add origin https://github.com/vwin2537-arch/E-ticket-automation.git
+git branch -M main
+git push -u origin main
+
+# push ทั่วไป (หลัง commit แล้ว)
+git push
+
+# clone ไปเครื่องใหม่
+git clone https://github.com/vwin2537-arch/E-ticket-automation.git
+```
+⚠️ `.gitignore` exclude: `auth/storageState.json`, `node_modules/`, `logs/usage.csv`, `dnp-eticket-windows.zip`
+— ก๊อป session ไปเครื่องอื่นด้วย `auth/storageState.json` เท่านั้น (อย่า push ขึ้น GitHub)
 ⚠️ **server cache โค้ด:** automation.js ถูก `require` ตอน start — แก้โค้ดแล้วต้อง `npm run restart` เสมอ
 ไม่งั้นยังรันโค้ดเก่า (เคยทำให้เจอบัค "ไม่มียานพาหนะ" — ดู PROGRESS)
 กรอกในหน้ากาก → กดยืนยัน → หน้ากากขึ้น popup spinner, เบราว์เซอร์กรอกแบบ**ซ่อนนอกจอ** →
