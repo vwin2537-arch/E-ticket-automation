@@ -1,7 +1,7 @@
 // automation.js — กรอกฟอร์มจอง DNP แทนเรา หยุดที่หน้าสรุปก่อนจ่ายเงิน
 const { chromium } = require('playwright');
 const path = require('path');
-const { PARK, VEHICLE_TYPES, TRAVELER_TYPES } = require('./config');
+const { PARK, VEHICLE_TYPES, TRAVELER_TYPES, TIME_SLOTS, SLOT_CLOSE_BUFFER_MIN } = require('./config');
 const { pickDate } = require('./datepicker');
 const { thaiNames, interNames } = require('./names');
 
@@ -77,6 +77,21 @@ async function revealWindow(page) {
 // แปลงวันที่ "วันนี้" ตามเวลาท้องถิ่นเป็น YYYY-MM-DD (กัน timezone เพี้ยนช่วงเช้ามืด)
 function todayISO() {
   const d = new Date();
+  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+  return d.toISOString().slice(0, 10);
+}
+
+// วันเป้าหมายที่ควรจอง/อุ่น pool — ฉลาดตามเวลา:
+//  - ก่อน cutoff (เวลาสิ้นสุดรอบสุดท้าย − buffer = 15:20) → "วันนี้"
+//  - เลย cutoff (วันนี้ปิดรับแล้ว) → "พรุ่งนี้" (นทท.ช่วง 15:20–เที่ยงคืน จองของพรุ่งนี้)
+//  - เลยเที่ยงคืน วันใหม่เริ่ม → กลับมาเป็น "วันนี้" อัตโนมัติ
+function bookDate() {
+  const last = TIME_SLOTS[TIME_SLOTS.length - 1];           // รอบสุดท้าย เช่น '11:45 - 15:30'
+  const [h, m] = last.split('-').pop().trim().split(':').map(Number);
+  const cutoffMin = h * 60 + m - SLOT_CLOSE_BUFFER_MIN;     // 15:30 − 10 = 15:20
+  const now = new Date();
+  const d = new Date();
+  if (now.getHours() * 60 + now.getMinutes() >= cutoffMin) d.setDate(d.getDate() + 1);
   d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
   return d.toISOString().slice(0, 10);
 }
@@ -269,4 +284,4 @@ async function checkLogin() {
   }
 }
 
-module.exports = { runBooking, warmTab, fillBooking, checkLogin, todayISO };
+module.exports = { runBooking, warmTab, fillBooking, checkLogin, todayISO, bookDate };

@@ -43,11 +43,14 @@ git clone https://github.com/vwin2537-arch/E-ticket-automation.git
 - `src/config.js` — ตัวเลือกฟอร์ม (เวลา/ยานพาหนะ/ประเภทผู้เดินทาง + ราคา) + `POOL_SIZE` ← แก้ตรงนี้ถ้าระบบเปลี่ยน
   มี field `en` ทุกประเภท (ยานพาหนะ/ผู้เดินทาง) ไว้โชว์ใน console เป็นอังกฤษ — เพิ่มประเภทใหม่อย่าลืมใส่ `en`
 - `src/automation.js` — `warmTab()` (Phase A: เปิด→การ์ด→เลือกวัน) + `fillBooking()` (Phase B: เวลา/รถ/คน→สรุป)
-  + `runBooking()` (warm+fill รวม สำหรับ cold path/สคริปต์เทส)
-- `src/pool.js` — warm pool: `init()` อุ่น POOL_SIZE แท็บตอน start, `acquire(date)` หยิบ+เติมคืน, ทิ้งแท็บค้างข้ามวัน
+  + `runBooking()` (warm+fill รวม สำหรับ cold path/สคริปต์เทส) + `bookDate()` (วันเป้าหมาย: วันนี้ก่อน 15:20 / พรุ่งนี้หลัง)
+- `src/pool.js` — warm pool: `init()` อุ่น POOL_SIZE แท็บตอน start, `acquire(date)` หยิบ+เติมคืน
+  warm ตาม `bookDate()` (วันนี้ก่อน 15:20 / พรุ่งนี้หลัง) — acquire ทิ้งแท็บที่ไม่ตรงวันเป้าหมาย (ข้ามวัน/เลย cutoff)
 - `src/datepicker.js` — เลือกวันใน Element UI date picker
 - `src/names.js` — generate ชื่อมั่วๆ (ระบบไม่เช็กชื่อจริง)
 - `src/server.js` — Express + API `/api/config`, `/api/book`, `/api/login-status`, `/api/pool-status` (สถานะ warm: ready/warming/size/today)
+  + `pendingTabs[]` คิวใบจริงดักรอจ่าย (#5) + `prunePending()` เอาใบที่ จนท.ปิดหน้าต่างแล้วออกจากคิว
+  + `shutdown()` จับ SIGINT/SIGTERM ปิด browser ทั้งหมด (pool+pendingTabs+lastDryTab) ก่อนตาย กัน chromium orphan
 - `src/logger.js` — เขียน log การใช้งานลง `logs/usage.csv` (logUsage) — เรียกจาก server.js ทุกครั้งที่จอง
   คอลัมน์ท้าย: `คนไทย`/`ต่างชาติ`/`รายละเอียดผู้เดินทาง`. `ensureHeader()` อัพเดท header ไฟล์เดิมเมื่อเพิ่ม column (ไม่ลบแถวเก่า)
   ⚠️ ส่ง zip ไป Windows **ห้ามใส่ logs/usage.csv** (ทับ log จริงของเครื่องด่าน) — header เก่าจะอัพเกรดเองตอนจองครั้งหน้า
@@ -85,17 +88,24 @@ session อยู่ได้นานเป็นปี (refresh_token) → **�
 
 ## หยุดที่ไหน
 หลังกรอกครบ กด "ต่อไป" → หน้าสรุป → **หยุด ไม่จ่ายเงินแทน** (ปล่อย browser เปิดค้างให้พี่วินตรวจ+จ่าย)
-ใบใหม่ที่จองสำเร็จ **ปิดใบเก่าอัตโนมัติ** (`lastTab` ใน `server.js`) — จองทีละใบ ใบใหม่มาแทนใบเก่าที่จ่ายเสร็จ/ทิ้ง
+**ดักได้หลายใบ (pipeline #5):** ใบจริงที่จองสำเร็จเข้าคิว `pendingTabs[]` (สูงสุด `MAX_PENDING`=3) —
+**ไม่ปิดใบเก่า** จนท.กรอกใบถัดไปได้เลยระหว่างคนแรกจ่าย. ใบทดสอบใช้ `lastDryTab` (ใบเดียว ปิดอันเก่า ไม่เข้าคิว).
+แยกทดสอบ/จริงกันบัค: กด "โหมดทดสอบ" คั่นระหว่างใบจริงรอจ่าย ใบจริงไม่หาย (เงินไม่หาย)
 
-## ⚠️ รอบเวลา: ปิดรอบในหน้ากากก่อนเวลาจริง 10 นาที (`SLOT_CLOSE_BUFFER_MIN` ใน index.html)
+## ⚠️ รอบเวลา: ปิดรอบในหน้ากากก่อนเวลาจริง 10 นาที (`SLOT_CLOSE_BUFFER_MIN` ใน **config.js** → ส่ง frontend ผ่าน /api/config)
 DNP เอา option รอบออกจาก dropdown **ก่อนเวลาสิ้นสุดเป๊ะ** (เช่นรอบเช้าหายก่อน 11:45) → ถ้า จนท.เลือกรอบที่ใกล้ปิด
 บอท `selectOption('เลือกเวลา')` หาไม่เจอ → error "ไม่กรอก ค้างหน้าเลือกวัน". แก้: หน้ากากปิดรอบล่วงหน้า 10 นาที
 (`rebuildTimeSlots` หัก buffer) + `automation.js` error เวลาบอกชัด "รอบนี้อาจปิดรับแล้ว ลองเลือกรอบอื่น".
 ปรับ buffer ได้ที่ค่าเดียว `SLOT_CLOSE_BUFFER_MIN`. **เทส/เดโมเลี่ยงช่วงคาบเกี่ยวเวลาปิดรอบ** (กันสับสน)
+**เลย cutoff (15:20) ระบบเด้งไปจอง "พรุ่งนี้" อัตโนมัติ** (`bookDate()`): warm pool + default วันในหน้ากากเปลี่ยนเป็นพรุ่งนี้
+จนถึงเที่ยงคืน แล้วกลับมา "วันนี้" เอง — รองรับ นทท.ช่วงเย็นที่จองของวันถัดไป (แก้ AUDIT #3 3/6/69)
 
-## pipeline จองดักหลายใบ — เคยลอง revert ออก (3/6/69)
-เคยลองค้างรอจ่าย 3 ใบ (`pendingTabs`/`MAX_PENDING`/`revealWindow(page,slot)`) แต่ revert กลับ `lastTab` เดิม
-(เลื่อนทำ ไม่ใช่ของเสีย — ตอนแรกเข้าใจผิดว่าเป็นต้นเหตุบัค "ไม่กรอก" จริงๆ คือรอบเวลา ↑). ทำใหม่ค่อยเทสให้ครบ
+## pipeline จองดักหลายใบ (#5) — ✅ ทำแล้ว (3/6/69)
+`pendingTabs[]` คิวใบจริงสูงสุด `MAX_PENDING`=3 (config.js). จองใบใหม่ **push เข้าคิว ไม่ปิดใบเก่า**.
+หลุดคิวเอง: `prunePending()` กรอง `browser.isConnected()` → จนท.ปิดหน้าต่างใบที่จ่ายเสร็จ = หลุดคิวอัตโนมัติ
+(ไม่ต้องกดปิดในระบบ). ครบเพดาน → error เตือน ไม่ acquire ไม่ปิดอะไร (กันใบยังไม่จ่ายโดนปิด เงินหาย).
+หน้ากากโชว์ "🎫 ดักอยู่ N/3 ใบ" (poll /api/pool-status → `pending`/`maxPending`). เทส `scripts/test-pipeline.js`
+(mock pool+fillBooking ไม่ยิง DNP) 16/16 ผ่าน. ⏳ รอเทส Windows จริง. ปรับเพดานที่ค่าเดียว `MAX_PENDING`
 
 ## ซ่อนหน้าต่างตอนกรอก (`automation.js`) — นทท.ที่ด่านเห็นจอเดียวกับที่กดจอง ต้องซ่อนสนิท
 - เปิด chromium headful + flags กัน throttle (`--disable-backgrounding-occluded-windows`,

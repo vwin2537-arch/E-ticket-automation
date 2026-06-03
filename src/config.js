@@ -11,8 +11,19 @@ const PARK = {
 // 3 = เผื่อกรณีกรอกผิดต้องทิ้งใบเก่ากรอกใหม่ pool จะได้ไม่สะดุด (RAM 16GB รับไหว)
 const POOL_SIZE = 3;
 
+// จำนวนใบ "จริง" ที่ดักรอจ่ายค้างไว้พร้อมกันได้สูงสุด (pipeline หลายใบ — #5)
+// จองใบใหม่ไม่ปิดใบเก่า → จนท.กรอกใบถัดไปได้เลยระหว่างคนแรกกำลังจ่าย
+// ใบจ่ายเสร็จ จนท.ปิดหน้าต่างเบราว์เซอร์เอง → ระบบเห็น disconnect แล้วเอาออกจากคิวอัตโนมัติ
+// ครบเพดานแล้วกดจองอีก = เตือน (ไม่ปิดอัตโนมัติ กันปิดใบที่ยังจ่ายไม่เสร็จ เงินหาย)
+const MAX_PENDING = 3;
+
 // ช่วงเวลา
 const TIME_SLOTS = ['08:00 - 11:45', '11:45 - 15:30'];
+
+// ปิดรอบในหน้ากากก่อนเวลาสิ้นสุดจริง N นาที — DNP เอา option รอบออกก่อนเวลาเป๊ะ
+// ใช้ค่าเดียวกันทั้ง 2 เรื่อง: (1) ปิดรอบใน dropdown (2) ตัดสิน "วันนี้ปิดรับแล้ว → เด้งไปจองพรุ่งนี้"
+// (warm pool + default วันในหน้ากาก ดึงค่านี้ผ่าน /api/config จะได้ consistent ทั้งระบบ)
+const SLOT_CLOSE_BUFFER_MIN = 10;
 
 // ประเภทยานพาหนะ (match = ข้อความเฉพาะที่ใช้ค้นหาใน dropdown)
 // en = ชื่ออังกฤษไว้โชว์ใน console (หน้าต่างดำ Windows วาดไทยไม่ได้)
@@ -43,4 +54,4 @@ const TRAVELER_TYPES = [
   { id: 'thai_elder',   match: 'ผู้สูงอายุ ชาวไทย',       label: 'ผู้สูงอายุไทย (60+)', price: 0, nationality: 'Thai',    featured: false, en: 'Elder (Thai)' },
 ];
 
-module.exports = { PARK, POOL_SIZE, TIME_SLOTS, VEHICLE_TYPES, TRAVELER_TYPES };
+module.exports = { PARK, POOL_SIZE, MAX_PENDING, TIME_SLOTS, SLOT_CLOSE_BUFFER_MIN, VEHICLE_TYPES, TRAVELER_TYPES };

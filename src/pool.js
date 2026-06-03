@@ -1,8 +1,8 @@
-// pool.js — คลังแท็บ "อุ่นเครื่อง" (warm): เปิด browser กดการ์ด+เลือกวันนี้รอไว้ล่วงหน้า
+// pool.js — คลังแท็บ "อุ่นเครื่อง" (warm): เปิด browser กดการ์ด+เลือกวันเป้าหมายรอไว้ล่วงหน้า
 // พอ จนท.กดยืนยัน → acquire() หยิบแท็บที่พร้อมมากรอกทันที (ข้าม ~6 วิแรก) แล้วเติม pool คืนพื้นหลัง
-// ใช้ได้เฉพาะ "วันนี้" (นทท.ที่ด่านเข้าวันนี้เกือบ 100%) — จองวันอื่น = warm สดทีละครั้ง (cold)
+// วันเป้าหมาย = bookDate() (วันนี้ก่อน 15:20 / พรุ่งนี้หลัง 15:20) — จองวันอื่น = warm สดทีละครั้ง (cold)
 
-const { warmTab, todayISO } = require('./automation');
+const { warmTab, bookDate } = require('./automation');
 const { POOL_SIZE } = require('./config');
 
 let pool = [];        // [{ browser, context, page, date, warmedAt }] — แท็บพร้อมใช้
@@ -14,7 +14,7 @@ let logFn = console.log;
 async function warmOne() {
   warming++;
   try {
-    const tab = await warmTab(todayISO(), { log: logFn });
+    const tab = await warmTab(bookDate(), { log: logFn });
     pool.push(tab);
     lastError = null;
     logFn(`warm ready (pool=${pool.length}/${POOL_SIZE})`);
@@ -45,22 +45,23 @@ function init(log = console.log) {
 //  - ไม่มีพร้อม / จองวันอื่น → warm สดเลย (รอ ~6 วิ เหมือนเดิม) — กรณีหายาก
 async function acquire(date, log = console.log) {
   logFn = log;
-  const today = todayISO();
+  const target = bookDate(); // วันเป้าหมาย (วันนี้ก่อน 15:20 / พรุ่งนี้หลัง 15:20)
 
-  // ทิ้งแท็บที่ค้างข้ามวัน (warm "เมื่อวาน" ใช้ไม่ได้แล้ว) — กันกรอกผิดวัน
+  // ทิ้งแท็บที่ไม่ตรงวันเป้าหมายแล้ว — ทั้งแท็บข้ามวัน (warm เมื่อวาน) และแท็บ "วันนี้" ที่เลย 15:20
+  // จนเป้าหมายเลื่อนเป็นพรุ่งนี้ — กันหยิบแท็บผิดวันมากรอก
   pool = pool.filter((t) => {
-    if (t.date !== today) { t.browser.close().catch(() => {}); return false; }
+    if (t.date !== target) { t.browser.close().catch(() => {}); return false; }
     return true;
   });
 
-  if (date === today && pool.length > 0) {
+  if (date === target && pool.length > 0) {
     const tab = pool.shift();
     refill();            // เติมคืนพื้นหลังทันที (ระหว่าง จนท.จ่ายเงินใบนี้)
     return tab;
   }
-  // cold path: ไม่มี warm พร้อม หรือจองวันอื่น
+  // cold path: ไม่มี warm พร้อม หรือจองวันอื่นที่ไม่ใช่วันเป้าหมาย
   const tab = await warmTab(date, { log });
-  if (date === today) refill(); // วันนี้แต่ pool หมด → เติมเผื่อใบถัดไป
+  if (date === target) refill(); // วันเป้าหมายแต่ pool หมด → เติมเผื่อใบถัดไป
   return tab;
 }
 

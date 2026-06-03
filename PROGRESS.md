@@ -74,11 +74,43 @@
 - **(3/6/69) ลอง pipeline จองดักหลายใบ → REVERT ออก** (คนละเรื่องกับบัคบน — pipeline ไม่ใช่ต้นเหตุ) — ลองให้ค้าง
   รอจ่าย 3 ใบ (`pendingTabs`/`MAX_PENDING`/`revealWindow(page,slot)`) แล้ว revert กลับ `lastTab` เดิม. เก็บไว้ทำใหม่ทีหลัง
 
+- **(3/6/69) AUDIT.md + แก้บัค #1 dryRun ปิดใบจริง** — ตรวจโค้ดทั้งโปรเจค ทำ `AUDIT.md` (เช็กลิสต์ 14 ข้อ P0-P2).
+  แก้ข้อ 1: เดิม dryRun ก็ `prevTab.browser.close()` → กดทดสอบคั่นระหว่างใบจริงรอจ่าย ใบจริงโดนปิด เงินหาย.
+  แก้: แยก `lastDryTab` ออกจาก `lastTab`, `prevTab = dryRun ? lastDryTab : lastTab` ปิดเฉพาะใบโหมดเดียวกัน.
+  ⏳ รอเทส server path จริง.
+- **(3/6/69) แก้บัค #2 graceful shutdown** — เพิ่ม `shutdown()` จับ SIGINT/SIGTERM ปิด browser ทั้งหมด
+  (`lastTab`+`lastDryTab`+`pool.drain()`) ก่อนตาย กัน chromium orphan ค้างกิน RAM. guard กันกดซ้ำ + safety timer 5 วิ.
+  ✅ P0 ครบทั้ง 2 ข้อ.
+- **(3/6/69) แก้ #3 แบบฉลาด — เลย 15:20 เด้งไปจอง "พรุ่งนี้" อัตโนมัติ** — เดิม warm "วันนี้" ตายตัว เลย cutoff
+  แล้วขึ้น error แดงค้าง. อัพเกรด: เพิ่ม `bookDate()` (automation.js) = วันนี้ก่อน 15:20 / พรุ่งนี้หลัง / ข้ามเที่ยงคืนกลับวันนี้.
+  pool warm ตาม bookDate, ย้าย `SLOT_CLOSE_BUFFER_MIN` ไป config.js (single source) ส่ง frontend ผ่าน /api/config,
+  หน้ากาก default วัน + แถบ warm ตาม bookDate. ทดสอบ 8 เคสเวลาผ่าน + syntax ครบ. ⏳ รอเทส server path จริง.
+- **(3/6/69) แก้ #4 running lock timeout** — เดิม `running` ค้าง true ถ้า fillBooking ค้าง (DNP ไม่ตอบ) → ปุ่มจอง
+  ทั้งระบบล็อกจน Playwright timeout เองสะสม. แก้: เพิ่ม `withTimeout()` ครอบ fillBooking ด้วย `Promise.race`
+  (`BOOK_TIMEOUT_MS` = 2 นาที) เกิน → โยน error ไทย ลง catch/finally ปกติ (ปลด running + ปิด tab ค้าง 60 วิ).
+  เลือกครอบ fillBooking แทน reset running เฉยๆ (กันคนกดซ้อน 2 งานชนกัน). ตั้ง 2 นาที — หน้างานกลุ่มใหญ่สุด
+  ~รถตู้ 20 คน (กรุ๊ปใหญ่จองจากบ้าน) + เผื่อ buffer กัน false timeout ตัดใบที่ใกล้สำเร็จ. ✅ syntax OK.
+  ข้อที่เหลือใน `AUDIT.md` เป็น P1/P2 (#5 pipeline หลายใบ งานใหญ่สุด / #8 ด่านหลายช่อง รอข้อมูล)
+  หมายเหตุ: ตัด AUDIT #5 เดิม (สัญชาติ default American) ออกตามพี่วินสั่ง — renumber ใหม่ทั้งลิสต์
+- **(3/6/69) เทส server จริงผ่าน #1–4** (Mac dryRun + ใบจริงไม่จ่าย) — วิธีพิสูจน์: นับ browser หลัก playwright
+  (1 browser = 3 process บน Mac) เทียบก่อน/หลังตอน warm pool นิ่ง (`warming:0`).
+  #1 ใบจริงค้าง + dryRun คั่น → browser 15 คงที่ (ใบจริงรอด ตรงบั๊ก P0). #2 SIGTERM → browser 0 + `Cleanup done. Bye.`
+  (graceful แท้). #3 หลัง cutoff `bookDate:2026-06-04` + `lastError:null` + frontend default 4 มิ.ย.
+  #4 (timeout) ลด `BOOK_TIMEOUT_MS`=3วิชั่วคราว ยิง dryRun 10 คน → ตัว1 timeout เด้งกลางคัน / ตัว2 ซ้อนติด lock /
+  ตัว3 หลัง timeout ผ่าน lock (release-on-timeout). คืนค่า 2 นาที + restart แล้ว.
+  ✅ **AUDIT P0+P1(#1-4) เทส Mac ผ่านครบ** — เหลือ #2 graceful shutdown บน Windows จริงยังรอเทสเครื่องด่าน
+- **(3/6/69) ✅ AUDIT #5 — pipeline จองดักหลายใบ** (ถามล้อมพี่วิน 5 ข้อก่อนทำ: ดัก 2-3 ใบ / เน้น จนท.สะดวก
+  ไม่ห่วง นทท. / ไม่ต้องกดปิดเอง / RAM 8GB+ / ชนเพดานเตือนไม่ปิดอัตโนมัติ). เปลี่ยน `lastTab` (ใบเดียว) →
+  `pendingTabs[]` คิวใบจริงสูงสุด `MAX_PENDING`=3 — **จองใบใหม่ไม่ปิดใบเก่า** จนท.กรอกใบถัดไปได้เลยระหว่างคนแรกจ่าย.
+  หลุดคิวเอง: `prunePending()` กรอง `browser.isConnected()` → ปิดหน้าต่างใบที่จ่ายเสร็จ = หลุดคิวอัตโนมัติ
+  (ไม่ต้องกดปิดในระบบ). ครบเพดาน → error เตือน ไม่ acquire ไม่ปิดอะไร (กันเงินหาย). dryRun แยก ไม่เข้าคิว.
+  หน้ากากเพิ่มแถบ "🎫 ดักอยู่ N/3 ใบ" (poll /api/pool-status). เทส `scripts/test-pipeline.js` 16/16 ผ่าน
+  (mock ไม่ยิง DNP). ⏳ รอเทส Windows จริงที่ด่าน + end-to-end ใบจริง
+
 ## รอทำ / รอตัดสินใจ ⏳
 - **ทดสอบ end-to-end จริง**: กด "ต่อไป" ดูหน้าสรุปว่าหยุดถูกที่ + ยังไม่จ่าย
   (ยังไม่ทำ เพราะเป็นระบบจริงของหน่วยงาน — รอพี่วินโอเค)
-- **(ถ้าจะทำ pipeline จองดักหลายใบใหม่)**: revert ไปก่อน (ไม่ใช่ต้นเหตุบัค แค่เลื่อนทำ) — ทำใหม่ค่อยเทส
-  ทั้ง Mac dryRun + Windows จริง + เลี่ยงเทสช่วงคาบเกี่ยวเวลาปิดรอบ (กันสับสนกับบัครอบเวลา)
+- **pipeline จองดักหลายใบ ✅ ทำแล้ว (AUDIT #5)** — เหลือเทส Windows จริง + end-to-end ใบจริงที่ด่าน
 - สัญชาติต่างชาติ default = "American" — ถ้าพี่วินอยากได้สัญชาติอื่น แก้ที่ `config.js`
 - ยังไม่ได้ทำ `.gitignore` (ถ้าจะ push ต้อง ignore `auth/`, `node_modules/`)
 

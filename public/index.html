@@ -103,6 +103,7 @@
   <div class="body">
     <div id="loginStatus" class="lstat checking">⏳ กำลังเช็กสถานะเข้าระบบ DNP...</div>
     <div id="warmStatus" class="warm cold">🔥 กำลังเช็กการอุ่นเครื่อง...</div>
+    <div id="pendingStatus" class="warm" style="display:none"></div>
     <div class="row">
       <div>
         <label>วันเข้าพื้นที่</label>
@@ -148,11 +149,19 @@ const localISO = (d) => { const x = new Date(d); x.setMinutes(x.getMinutes() - x
 // นาทีของเวลา "สิ้นสุด" ในรอบ เช่น '08:00 - 11:45' → 11*60+45
 const slotEndMin = (slot) => { const [h, m] = slot.split('-').pop().trim().split(':').map(Number); return h * 60 + m; };
 // ปิดรอบในหน้ากากก่อนเวลาสิ้นสุดจริง N นาที — DNP ตัดรอบ/เอา option ออกก่อน 11:45 เป๊ะ ทำให้กรอกไม่ได้
-// (เคยเจอ: เลือกรอบเช้าตอน 11:43 → DNP เอา option ออก → บอทเลือกไม่ได้ ค้างหน้าเลือกวัน) — ปรับค่าได้ตรงนี้
-const SLOT_CLOSE_BUFFER_MIN = 10;
+// ดึงค่าจริงจาก /api/config (single source ที่ config.js) ตอน init — ตัวเลขนี้เป็น fallback เผื่อโหลดไม่ทัน
+let SLOT_CLOSE_BUFFER_MIN = 10;
+// วันเป้าหมายที่ระบบ warm ไว้ (ต้องตรงกับ backend bookDate): ก่อน cutoff(รอบสุดท้าย−buffer)=วันนี้ / เลย=พรุ่งนี้
+function bookDateLocal() {
+  const lastEnd = slotEndMin(CFG.timeSlots[CFG.timeSlots.length - 1]);
+  const now = new Date(), d = new Date();
+  if (now.getHours() * 60 + now.getMinutes() >= lastEnd - SLOT_CLOSE_BUFFER_MIN) d.setDate(d.getDate() + 1);
+  return localISO(d);
+}
 
 async function init() {
   CFG = await (await fetch('/api/config')).json();
+  SLOT_CLOSE_BUFFER_MIN = CFG.slotCloseBufferMin ?? SLOT_CLOSE_BUFFER_MIN; // ใช้ค่ากลางจาก backend
 
   $('date').min = localISO(new Date());
   $('date').onchange = () => { rebuildTimeSlots(); renderWarm(); }; // เปลี่ยนวัน → คิดรอบเวลา + อัปเดตสถานะ warm
@@ -184,7 +193,7 @@ async function init() {
 // ล้างฟอร์มกลับเป็นค่าเริ่มต้น (วันนี้ / รถ 1 คัน / คน 0) — ใช้ตอนโหลดหน้า + ปุ่ม "ล้างฟอร์ม"
 // ไม่แตะ event handler/options/polling (ผูกครั้งเดียวใน init) เลยไม่ต้องโหลดหน้าใหม่
 function resetForm() {
-  $('date').value = localISO(new Date());
+  $('date').value = bookDateLocal(); // วันเป้าหมาย (วันนี้ก่อน 15:20 / พรุ่งนี้หลัง) ให้ตรงกับ warm pool
   $('vehicles').innerHTML = ''; $('vehicles').appendChild(vehRow('รถยนต์ 4 ล้อ'));
   $('travelers').innerHTML = '';
   CFG.travelers.filter((x) => x.featured).forEach((x) => $('travelers').appendChild(travRow(x)));
@@ -202,10 +211,11 @@ let warmCache = null;
 function renderWarm() {
   const box = $('warmStatus');
   if (!warmCache) return;
-  const { ready, warming, size, today, lastError } = warmCache;
-  if ($('date').value !== today) {
+  const { ready, warming, size, bookDate, lastError } = warmCache;
+  if ($('date').value !== bookDate) {
     box.className = 'warm cold';
-    box.innerHTML = 'ℹ️ จองวันอื่น (ไม่ใช่วันนี้) — มุกเปิดสดให้ต่อครั้ง (~6 วิ) <span class="dots">warm = เฉพาะวันนี้</span>';
+    const th = bookDate > localISO(new Date()) ? 'พรุ่งนี้' : 'วันนี้';
+    box.innerHTML = `ℹ️ จองวันอื่น — มุกเปิดสดให้ต่อครั้ง (~6 วิ) <span class="dots">ระบบเตรียม ${th} (${bookDate}) ไว้</span>`;
     return;
   }
   if (lastError) {
@@ -216,7 +226,7 @@ function renderWarm() {
   const dots = '●'.repeat(ready) + '○'.repeat(Math.max(0, size - ready));
   if (ready >= size) {
     box.className = 'warm full';
-    box.innerHTML = `🔥 อุ่นเครื่องพร้อม — จองวันนี้ได้ทันที <span class="dots">${ready}/${size} ${dots}</span>`;
+    box.innerHTML = `🔥 อุ่นเครื่องพร้อม — จองได้ทันที <span class="dots">${ready}/${size} ${dots}</span>`;
   } else if (ready > 0) {
     box.className = 'warm full';
     box.innerHTML = `🔥 พร้อมจองทันที ${ready} แท็บ (กำลังอุ่นเพิ่ม…) <span class="dots">${ready}/${size} ${dots}</span>`;
@@ -225,8 +235,23 @@ function renderWarm() {
     box.innerHTML = `🔥 กำลังอุ่นเครื่อง… <span class="dots">${ready}/${size} ${dots}</span>`;
   }
 }
+// แถบ "ใบดักรอจ่าย" (#5) — โชว์ให้ จนท.รู้ว่าดักไว้กี่ใบ ใกล้เต็มเพดานหรือยัง
+// ใบจ่ายเสร็จ = ปิดหน้าต่างเบราว์เซอร์ → backend เห็น disconnect เอาออกเอง ตัวเลขนี้ลดเอง
+function renderPending() {
+  const box = $('pendingStatus');
+  if (!warmCache || !warmCache.pending) { box.style.display = 'none'; return; } // ไม่มีใบดัก = ซ่อนแถบ
+  const { pending, maxPending } = warmCache;
+  box.style.display = '';
+  if (pending >= maxPending) {
+    box.className = 'warm';
+    box.innerHTML = `🎫 ดักใบรอจ่ายอยู่ ${pending}/${maxPending} ใบ — เต็มแล้ว ปิดหน้าต่างใบที่จ่ายเสร็จก่อนนะคะ`;
+  } else {
+    box.className = 'warm full';
+    box.innerHTML = `🎫 ดักใบรอจ่ายอยู่ <b>${pending}/${maxPending}</b> ใบ — จองใบถัดไปได้เลย`;
+  }
+}
 async function pollWarm() {
-  try { warmCache = await (await fetch('/api/pool-status')).json(); renderWarm(); } catch (e) { /* เงียบ ไม่บล็อกหน้า */ }
+  try { warmCache = await (await fetch('/api/pool-status')).json(); renderWarm(); renderPending(); } catch (e) { /* เงียบ ไม่บล็อกหน้า */ }
 }
 
 // เช็กว่ายังเข้าระบบ DNP อยู่ไหม แล้วโชว์ไฟสถานะ + คุมปุ่มยืนยัน
