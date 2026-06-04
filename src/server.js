@@ -55,9 +55,19 @@ let pendingTabs = []; // คิวใบ "จริง" ที่ดักรอ
 let lastDryTab = null; // ใบ "โหมดทดสอบ" ล่าสุด — แยกจากใบจริง ไม่เข้าคิว (ปิดอันเก่าทันที กันสะสม)
 
 // เอาใบที่ จนท.ปิดหน้าต่างเบราว์เซอร์ไปแล้ว (= จ่ายเสร็จ) ออกจากคิว — เหลือแต่ใบที่ยังเปิดค้างรอจ่าย
-// นี่คือกลไก "ไม่ต้องกดปิดในระบบ": ปิดหน้าต่างใบที่จ่ายเสร็จตามธรรมชาติ ระบบเห็น disconnect เอาออกเอง
+// นี่คือกลไก "ไม่ต้องกดปิดในระบบ": ปิดหน้าต่างใบที่จ่ายเสร็จตามธรรมชาติ ระบบเอาออกเอง
+// ⚠️ เช็ก page.isClosed() เป็นหลัก — ห้ามพึ่ง browser.isConnected() อย่างเดียว:
+//    Playwright launch() ถือ connection ไว้ → จนท.ปิดหน้าต่างแล้ว browser process ยังไม่ตาย
+//    isConnected ค้าง true ตลอด คิวไม่มีวันว่าง กดใบที่ 4 ไม่ได้ (พิสูจน์ใน scripts/test-window-close.js)
+//    คง isConnected ไว้เป็น backup เผื่อ browser ตายจริง (crash/kill) — เอาออกถ้า "ปิดหน้าต่าง หรือ หลุด"
+// ⚠️ ใบที่หลุดต้อง browser.close() ปิด process ด้วย — ไม่งั้น Playwright ถือ process ไว้ค้างใน Dock
+//    กลายเป็น orphan สะสมกิน RAM (ปิดหน้าต่าง = แค่ปิด "หน้าต่าง" ไม่ใช่ฆ่า browser process)
 function prunePending() {
-  pendingTabs = pendingTabs.filter((t) => t.browser.isConnected());
+  pendingTabs = pendingTabs.filter((t) => {
+    const alive = !t.page.isClosed() && t.browser.isConnected();
+    if (!alive) t.browser.close().catch(() => {}); // หลุดแล้ว — ฆ่า process ทิ้ง กัน orphan
+    return alive;
+  });
 }
 
 app.post('/api/book', async (req, res) => {

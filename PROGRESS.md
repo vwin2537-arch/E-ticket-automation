@@ -102,10 +102,18 @@
 - **(3/6/69) ✅ AUDIT #5 — pipeline จองดักหลายใบ** (ถามล้อมพี่วิน 5 ข้อก่อนทำ: ดัก 2-3 ใบ / เน้น จนท.สะดวก
   ไม่ห่วง นทท. / ไม่ต้องกดปิดเอง / RAM 8GB+ / ชนเพดานเตือนไม่ปิดอัตโนมัติ). เปลี่ยน `lastTab` (ใบเดียว) →
   `pendingTabs[]` คิวใบจริงสูงสุด `MAX_PENDING`=3 — **จองใบใหม่ไม่ปิดใบเก่า** จนท.กรอกใบถัดไปได้เลยระหว่างคนแรกจ่าย.
-  หลุดคิวเอง: `prunePending()` กรอง `browser.isConnected()` → ปิดหน้าต่างใบที่จ่ายเสร็จ = หลุดคิวอัตโนมัติ
+  หลุดคิวเอง: `prunePending()` กรอง `!page.isClosed()` → ปิดหน้าต่างใบที่จ่ายเสร็จ = หลุดคิวอัตโนมัติ
   (ไม่ต้องกดปิดในระบบ). ครบเพดาน → error เตือน ไม่ acquire ไม่ปิดอะไร (กันเงินหาย). dryRun แยก ไม่เข้าคิว.
-  หน้ากากเพิ่มแถบ "🎫 ดักอยู่ N/3 ใบ" (poll /api/pool-status). เทส `scripts/test-pipeline.js` 16/16 ผ่าน
+  หน้ากากเพิ่มแถบ "🎫 ดักอยู่ N/3 ใบ" (poll /api/pool-status). เทส `scripts/test-pipeline.js` 17/17 ผ่าน
   (mock ไม่ยิง DNP). ⏳ รอเทส Windows จริงที่ด่าน + end-to-end ใบจริง
+- **(4/6/69) 🐛 แก้บั๊ก prunePending — ปิดหน้าต่างแล้วคิวไม่ว่าง กดใบที่ 4 ไม่ได้** (พี่วินรายงาน):
+  ต้นตอ = `prunePending()` วัด "ปิดหน้าต่าง" ด้วย `browser.isConnected()` แต่ Playwright `launch()` ถือ connection ไว้
+  → ปิดหน้าต่างแล้ว browser process ยังไม่ตาย `isConnected` ค้าง true ตลอด → คิว `pendingTabs` ไม่มีวันว่าง
+  → ชน `MAX_PENDING`=3 ถาวร กดใบที่ 4 เด้ง error "ครบ 3 ใบ". **แก้:** เปลี่ยนเป็น `!page.isClosed() && isConnected()`
+  (page.isClosed() flip true ทันทีตอนปิดหน้าต่าง — คง isConnected เป็น backup เผื่อ browser crash จริง).
+  พิสูจน์ด้วย `scripts/test-window-close.js` (เปิด browser เปล่าๆ ไม่แตะ DNP) + อัปเดต mock `test-pipeline.js`
+  ให้แยก windowClosed/browserDead ตรงความจริง (เดิม mock ปิดหน้าต่างเป็น connected=false = false confidence
+  ต้นตอที่บั๊กหลุด). โค้ดเก่าเทสตก 3/17 ตรงจุดบั๊ก / โค้ดใหม่ผ่าน 17/17
 
 ## รอทำ / รอตัดสินใจ ⏳
 - **ทดสอบ end-to-end จริง**: กด "ต่อไป" ดูหน้าสรุปว่าหยุดถูกที่ + ยังไม่จ่าย

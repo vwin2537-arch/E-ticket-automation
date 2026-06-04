@@ -102,7 +102,8 @@ DNP เอา option รอบออกจาก dropdown **ก่อนเว�
 
 ## pipeline จองดักหลายใบ (#5) — ✅ ทำแล้ว (3/6/69)
 `pendingTabs[]` คิวใบจริงสูงสุด `MAX_PENDING`=3 (config.js). จองใบใหม่ **push เข้าคิว ไม่ปิดใบเก่า**.
-หลุดคิวเอง: `prunePending()` กรอง `browser.isConnected()` → จนท.ปิดหน้าต่างใบที่จ่ายเสร็จ = หลุดคิวอัตโนมัติ
+หลุดคิวเอง: `prunePending()` กรอง `!page.isClosed()` → จนท.ปิดหน้าต่างใบที่จ่ายเสร็จ = หลุดคิวอัตโนมัติ
+⚠️ **ห้ามใช้ `browser.isConnected()` วัด "ปิดหน้าต่าง"** — Playwright `launch()` ถือ connection ไว้ ปิดหน้าต่างแล้ว browser ยังไม่ตาย isConnected ค้าง true คิวไม่มีวันว่าง (เคยเป็นบั๊ก 4/6/69 — พิสูจน์ใน `scripts/test-window-close.js`)
 (ไม่ต้องกดปิดในระบบ). ครบเพดาน → error เตือน ไม่ acquire ไม่ปิดอะไร (กันใบยังไม่จ่ายโดนปิด เงินหาย).
 หน้ากากโชว์ "🎫 ดักอยู่ N/3 ใบ" (poll /api/pool-status → `pending`/`maxPending`). เทส `scripts/test-pipeline.js`
 (mock pool+fillBooking ไม่ยิง DNP) 16/16 ผ่าน. ⏳ รอเทส Windows จริง. ปรับเพดานที่ค่าเดียว `MAX_PENDING`

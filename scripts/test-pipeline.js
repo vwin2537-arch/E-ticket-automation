@@ -1,22 +1,28 @@
 // test-pipeline.js — เทส #5 pipeline จองดักหลายใบ (prune / เพดาน / ไม่ปิดใบเก่า)
 // MOCK pool.acquire + fillBooking + logger — ไม่ยิง DNP จริง ไม่เปิด browser ไม่เขียน usage.csv
-// design ปัจจุบัน: prune ใช้ browser.isConnected() (จนท.ปิดหน้าต่าง = จ่ายเสร็จ → หลุดคิวเอง)
+// design ปัจจุบัน: prune ใช้ page.isClosed() เป็นหลัก (จนท.ปิดหน้าต่าง = จ่ายเสร็จ → หลุดคิวเอง)
+// ⚠️ สำคัญ: ปิดหน้าต่างจริงทำให้ page.isClosed()→true แต่ browser.isConnected() ยังค้าง true
+//    (Playwright launch() ถือ connection ไว้ — พิสูจน์ใน scripts/test-window-close.js)
+//    mock ข้างล่างจึงแยก windowClosed (ปิดหน้าต่าง) ออกจาก browserDead (browser ตายจริง/crash)
 // รัน: node scripts/test-pipeline.js
 const http = require('http');
 const automation = require('../src/automation');
 const pool = require('../src/pool');
 const logger = require('../src/logger');
 
-// --- mock: แท็บปลอม คุม connected flag จำลอง จนท.ปิดหน้าต่าง + spy ว่าโดน close ไหม ---
+// --- mock: แท็บปลอม จำลอง จนท.ปิดหน้าต่าง (windowClosed) แยกจาก browser ตาย (browserDead) + spy ว่าโดน close ไหม ---
 const tabs = [];
 function makeTab(label) {
   const tab = {
-    label, connected: true, closed: false,
+    label, windowClosed: false, browserDead: false, closed: false,
     browser: {
-      isConnected: () => tab.connected,
-      close: async () => { tab.closed = true; },
+      // ปิดหน้าต่างไม่ทำให้ isConnected เป็น false — เป็น false เฉพาะตอน browser ตายจริง
+      isConnected: () => !tab.browserDead,
+      close: async () => { tab.closed = true; tab.browserDead = true; },
     },
-    page: {}, date: '2099-01-01',
+    // ปิดหน้าต่าง = page ปิดทันที (สัญญาณจริงที่ prune ควรเช็ก)
+    page: { isClosed: () => tab.windowClosed || tab.browserDead },
+    date: '2099-01-01',
   };
   tabs.push(tab);
   return tab;
@@ -82,9 +88,13 @@ const check = (name, cond, extra = '') => {
   check('ใบจริงเดิม 3 ใบยังไม่โดนปิด', realTabs.every((t) => !t.closed));
 
   console.log('\n[3] prune — จนท.ปิดหน้าต่างใบที่จ่ายเสร็จ → หลุดคิวเอง');
-  realTabs[0].connected = false; // จำลอง จนท.ปิด browser ใบแรก (จ่ายเสร็จ)
+  // จำลองจริง: ปิดหน้าต่าง = page ปิด แต่ browser ยัง connected (ดักบั๊กที่เคยพึ่ง isConnected อย่างเดียว)
+  realTabs[0].windowClosed = true;
+  check('(sanity) ปิดหน้าต่างแล้ว browser ยัง isConnected=true', realTabs[0].browser.isConnected() === true);
   st = await poolStatus();
   check('pending ลดเหลือ 2 อัตโนมัติ', st.pending === 2, `got ${st.pending}`);
+  check('browser ใบที่ปิดถูก close() ด้วย (กัน orphan ค้าง Dock)', realTabs[0].closed === true,
+    `closed=${realTabs[0].closed}`);
 
   console.log('\n[4] มีที่ว่างแล้ว — จองใบใหม่ได้อีก');
   const r5 = await book();
