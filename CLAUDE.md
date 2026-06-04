@@ -104,9 +104,10 @@ DNP เอา option รอบออกจาก dropdown **ก่อนเว�
 `pendingTabs[]` คิวใบจริงสูงสุด `MAX_PENDING`=3 (config.js). จองใบใหม่ **push เข้าคิว ไม่ปิดใบเก่า**.
 หลุดคิวเอง: `prunePending()` กรอง `!page.isClosed()` → จนท.ปิดหน้าต่างใบที่จ่ายเสร็จ = หลุดคิวอัตโนมัติ
 ⚠️ **ห้ามใช้ `browser.isConnected()` วัด "ปิดหน้าต่าง"** — Playwright `launch()` ถือ connection ไว้ ปิดหน้าต่างแล้ว browser ยังไม่ตาย isConnected ค้าง true คิวไม่มีวันว่าง (เคยเป็นบั๊ก 4/6/69 — พิสูจน์ใน `scripts/test-window-close.js`)
+⚠️ **prune ใบที่หลุดต้อง `browser.close()` ด้วย** — ไม่งั้น process orphan ค้างใน Dock สะสมกิน RAM (ปิดหน้าต่าง = ปิดแค่ "หน้าต่าง" ไม่ฆ่า process). orphan ที่หลุดจาก list แล้ว shutdown ก็เก็บไม่ได้ ต้อง `pkill -f ms-playwright` ลบมือ (ไม่แตะ Google Chrome ปกติ)
 (ไม่ต้องกดปิดในระบบ). ครบเพดาน → error เตือน ไม่ acquire ไม่ปิดอะไร (กันใบยังไม่จ่ายโดนปิด เงินหาย).
 หน้ากากโชว์ "🎫 ดักอยู่ N/3 ใบ" (poll /api/pool-status → `pending`/`maxPending`). เทส `scripts/test-pipeline.js`
-(mock pool+fillBooking ไม่ยิง DNP) 16/16 ผ่าน. ⏳ รอเทส Windows จริง. ปรับเพดานที่ค่าเดียว `MAX_PENDING`
+(mock pool+fillBooking ไม่ยิง DNP) 18/18 ผ่าน + เทส live จริงผ่าน (3 ใบ→ใบ4 error→ปิดหน้าต่าง pending 3→2→0). ⏳ รอเทส Windows จริง. ปรับเพดานที่ค่าเดียว `MAX_PENDING`
 
 ## ซ่อนหน้าต่างตอนกรอก (`automation.js`) — นทท.ที่ด่านเห็นจอเดียวกับที่กดจอง ต้องซ่อนสนิท
 - เปิด chromium headful + flags กัน throttle (`--disable-backgrounding-occluded-windows`,

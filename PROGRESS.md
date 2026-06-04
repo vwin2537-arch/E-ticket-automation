@@ -1,6 +1,6 @@
 # PROGRESS.md — DNP E-Ticket Auto-fill
 
-## สถานะ: 🟢 ใช้งานได้ + warm pool เร่งความเร็ว (รอทดสอบ end-to-end จริงกับพี่วิน) — อัพเดทล่าสุด 3/6/69
+## สถานะ: 🟢 ใช้งานได้ + warm pool + แก้บั๊ก pipeline (คิว/orphan) เทส live ผ่าน — อัพเดทล่าสุด 4/6/69
 
 ## ทำแล้ว ✅
 - Setup Node + Playwright + Express
@@ -113,7 +113,10 @@
   (page.isClosed() flip true ทันทีตอนปิดหน้าต่าง — คง isConnected เป็น backup เผื่อ browser crash จริง).
   พิสูจน์ด้วย `scripts/test-window-close.js` (เปิด browser เปล่าๆ ไม่แตะ DNP) + อัปเดต mock `test-pipeline.js`
   ให้แยก windowClosed/browserDead ตรงความจริง (เดิม mock ปิดหน้าต่างเป็น connected=false = false confidence
-  ต้นตอที่บั๊กหลุด). โค้ดเก่าเทสตก 3/17 ตรงจุดบั๊ก / โค้ดใหม่ผ่าน 17/17
+  ต้นตอที่บั๊กหลุด). **บั๊ก #2 (พี่วินเห็น Chromium ค้างสะสม Dock):** prune เอาใบออกจาก array แต่ไม่ `browser.close()`
+  → process orphan ลอยค้างกิน RAM. แก้: prune เรียก `browser.close()` ใบที่หลุดด้วย. โค้ดเก่าเทสตก 3/18
+  ตรงจุดบั๊ก / โค้ดใหม่ผ่าน 18/18. ✅ **เทส live จริงผ่าน:** จอง 3 ใบเต็มคิว → ใบ 4 เด้ง error → ปิดหน้าต่าง
+  pending 3→2→0 + เก็บ orphan 9 ตัวออก (Google Chrome ปกติไม่โดนแตะ). commit `b2e2a01` push แล้ว + อัพ zip Windows
 
 ## รอทำ / รอตัดสินใจ ⏳
 - **ทดสอบ end-to-end จริง**: กด "ต่อไป" ดูหน้าสรุปว่าหยุดถูกที่ + ยังไม่จ่าย
