@@ -83,9 +83,35 @@
               animation: shimmer 1.2s linear infinite; }
   @keyframes shimmer { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
   .pct { margin-top: 8px; font-size: 12px; font-weight: 600; color: #2e8b57; }
+  /* modal เลือกขนาดกระดาษใบเสร็จ — เด้งตอนเปิดระบบ (z สูงกว่า overlay) */
+  #paperModal { position: fixed; inset: 0; background: rgba(0,0,0,.45);
+                display: none; align-items: center; justify-content: center; z-index: 1000; }
+  #paperModal.show { display: flex; }
+  #paperModal .pcard { background: #fff; border-radius: 18px; padding: 28px 30px; text-align: center;
+                       box-shadow: 0 12px 44px rgba(0,0,0,.3); max-width: 340px; }
+  #paperModal h3 { margin: 0 0 6px; font-size: 18px; color: #2e8b57; }
+  #paperModal .desc { margin: 0 0 20px; font-size: 13px; color: #778; line-height: 1.5; }
+  #paperModal .pbtns { display: flex; gap: 12px; justify-content: center; }
+  #paperModal .pbtns button { flex: 1; padding: 16px 0; border: 2px solid #2e8b57; background: #fff;
+                       color: #2e8b57; border-radius: 12px; font-size: 17px; font-weight: 700; cursor: pointer; }
+  #paperModal .pbtns button:hover { background: #2e8b57; color: #fff; }
+  #paperModal .pbtns small { display: block; font-size: 11px; font-weight: 400; margin-top: 3px; opacity: .8; }
+  #paperChip { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; margin-bottom: 10px;
+               font-size: 12px; color: #557; background: #eef1f4; border-radius: 99px; padding: 4px 11px; }
+  #paperChip:hover { background: #e3ece7; }
 </style>
 </head>
 <body>
+<div id="paperModal">
+  <div class="pcard">
+    <h3>🧾 เลือกขนาดกระดาษใบเสร็จ</h3>
+    <p class="desc">เลือกให้ตรงกับเครื่องปริ้นความร้อนที่ใช้วันนี้<br>(อย่าลืมตั้ง default printer บนเครื่องให้ตรงขนาดด้วยนะคะ)</p>
+    <div class="pbtns">
+      <button data-w="57">57 มม.<small>เครื่องเล็ก</small></button>
+      <button data-w="80">80 มม.<small>เครื่องใหญ่</small></button>
+    </div>
+  </div>
+</div>
 <div id="overlay">
   <div class="pop">
     <div class="spin"></div>
@@ -101,6 +127,7 @@
     <p>กรอกแค่ที่จำเป็น แล้วให้มุกไปกรอกในระบบ DNP ให้เอง</p>
   </div>
   <div class="body">
+    <div id="paperChip" title="กดเพื่อเปลี่ยนขนาดกระดาษใบเสร็จ">🧾 ใบเสร็จ: <b id="paperLabel">—</b> · เปลี่ยน</div>
     <div id="loginStatus" class="lstat checking">⏳ กำลังเช็กสถานะเข้าระบบ DNP...</div>
     <div id="warmStatus" class="warm cold">🔥 กำลังเช็กการอุ่นเครื่อง...</div>
     <div id="pendingStatus" class="warm" style="display:none"></div>
@@ -445,6 +472,26 @@ $('go').onclick = async () => {
     $('go').disabled = false; $('go').textContent = '✓ ยืนยัน — ให้มุกกรอกให้';
   }
 };
+
+// ===== ขนาดกระดาษใบเสร็จ — ถามครั้งเดียวตอนเปิดระบบ (server เก็บค่าจน start ใหม่) =====
+function reflectPaper(w) { $('paperLabel').textContent = w + 'mm'; }
+async function initPaperSize() {
+  try {
+    const { width } = await (await fetch('/api/paper-size')).json();
+    if (width) reflectPaper(width);                  // เลือกแล้ว (เช่น รีเฟรชหน้า) — ไม่ถามซ้ำ
+    else $('paperModal').classList.add('show');       // ยังไม่เลือก — เด้งถาม
+  } catch (e) {}
+}
+async function setPaper(width) {
+  try {
+    await fetch('/api/paper-size', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ width }) });
+  } catch (e) {}
+  reflectPaper(width);
+  $('paperModal').classList.remove('show');
+}
+document.querySelectorAll('#paperModal .pbtns button').forEach((b) => (b.onclick = () => setPaper(Number(b.dataset.w))));
+$('paperChip').onclick = () => $('paperModal').classList.add('show');
+initPaperSize();
 
 init();
 </script>

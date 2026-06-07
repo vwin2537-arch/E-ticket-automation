@@ -1,7 +1,7 @@
 // server.js — หน้ากาก web app + API สั่ง automation
 const express = require('express');
 const path = require('path');
-const { fillBooking, checkLogin } = require('./automation');
+const { fillBooking, checkLogin, setReceiptWidth } = require('./automation');
 const pool = require('./pool');
 const { logUsage } = require('./logger');
 const { PARK, POOL_SIZE, MAX_PENDING, TIME_SLOTS, SLOT_CLOSE_BUFFER_MIN, VEHICLE_TYPES, TRAVELER_TYPES } = require('./config');
@@ -13,6 +13,16 @@ app.use(express.static(path.join(__dirname, '..', 'public')));
 // ส่ง config ให้หน้ากากไป render ตัวเลือก
 app.get('/api/config', (req, res) => {
   res.json({ park: PARK.name, timeSlots: TIME_SLOTS, slotCloseBufferMin: SLOT_CLOSE_BUFFER_MIN, vehicles: VEHICLE_TYPES, travelers: TRAVELER_TYPES });
+});
+
+// ขนาดกระดาษใบเสร็จ (mm) — จนท.เลือกตอนเปิดระบบ (ครั้งเดียวต่อการ start; รีเซ็ตเป็น null เมื่อ start ใหม่)
+// null = ยังไม่เลือก → หน้ากากเด้ง modal ถาม. เก็บ in-memory พอ (ปริ้นไป default printer ที่ จนท.ตั้งให้ตรงขนาด)
+let receiptWidth = null;
+app.get('/api/paper-size', (req, res) => res.json({ width: receiptWidth }));
+app.post('/api/paper-size', (req, res) => {
+  receiptWidth = req.body.width === 57 ? 57 : 80;
+  setReceiptWidth(receiptWidth); // ส่งให้ automation ฉีดเข้าหน้าตั๋ว
+  res.json({ ok: true, width: receiptWidth });
 });
 
 // เช็กว่า session ยังเข้าระบบ DNP อยู่ไหม (ให้หน้ากากโชว์ไฟสถานะ)

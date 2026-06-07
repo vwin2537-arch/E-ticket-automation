@@ -58,6 +58,15 @@ git clone https://github.com/vwin2537-arch/E-ticket-automation.git
 - `src/logger.js` — เขียน log การใช้งานลง `logs/usage.csv` (logUsage) — เรียกจาก server.js ทุกครั้งที่จอง
   คอลัมน์ท้าย: `คนไทย`/`ต่างชาติ`/`รายละเอียดผู้เดินทาง`. `ensureHeader()` อัพเดท header ไฟล์เดิมเมื่อเพิ่ม column (ไม่ลบแถวเก่า)
   ⚠️ ส่ง zip ไป Windows **ห้ามใส่ logs/usage.csv** (ทับ log จริงของเครื่องด่าน) — header เก่าจะอัพเกรดเองตอนจองครั้งหน้า
+- `src/receipt-inject/` — ก๊อป `receipt-core.js`+`content.js` จากโปรเจค `~/dnp-eticket-receipt` (ปุ่มปริ้นใบเสร็จ)
+  automation ฉีดเข้าทุกหน้า DNP เพราะ Chromium ของ Playwright ไม่มี Chrome extension — `injectReceiptButton()`
+  เรียกผ่าน `context.on('page')` + event `load` ครอบ **ทุกหน้าต่างที่ DNP เปิดใหม่** (⚠️ หน้าตั๋ว QR เข้าอุทยาน
+  ที่ต้องปริ้นจริง เด้งเป็น `window.open` ใหม่ — `addInitScript` ครอบ popup ไม่ถึง ต้องดักที่ `context.on('page')`)
+  เช็ค host=e-ticket.dnp.go.th กันปุ่มโผล่หน้าจ่ายเงินคนละ domain + เช็ค `window.DNPReceipt` กันฉีดซ้ำ
+  **ขนาดกระดาษ 57/80mm:** จนท.เลือกตอนเปิดหน้ากาก (modal ถามครั้งเดียว/start) → POST `/api/paper-size` → server เก็บ
+  in-memory + `setReceiptWidth()` → `injectReceiptButton` ฉีด `window.__DNP_RECEIPT_WIDTH` → `receipt-core` render ตามขนาด
+  (parametrize `@page`/width/QR/ฟอนต์; 57mm: QR 38mm / 80mm: QR 42mm). ปริ้นไป **default printer** (silent) — จนท.ตั้ง default ให้ตรงขนาดเอง
+  ⚠️ **เป็นสำเนา** — แก้ logic ปริ้นที่ `~/dnp-eticket-receipt` แล้วก๊อปทับโฟลเดอร์นี้ (ไม่งั้น 2 ที่ไม่ตรงกัน)
 - `public/index.html` — หน้ากาก UI (รอบเวลาฉลาด + ไฟสถานะ login + แถบสถานะ warm `1/3→3/3` ตามวันที่ + progress bar ใน popup)
 - `scripts/login.js` — login + save session
 - `auth/storageState.json` — session (อย่า commit, อย่าแชร์)
@@ -121,10 +130,17 @@ session อยู่ได้นานเป็นปี (refresh_token) → **�
   `--disable-renderer-backgrounding`, `--disable-background-timer-throttling`)
 - **แยกตาม OS** (`process.platform`):
   - 🪟 **Windows (เครื่องด่านจริง)**: `--window-position=-32000,-32000` ดันออกนอกจอ = ซ่อนสนิท + เร็ว
-    (Windows ยอมให้หน้าต่างหลุดนอกจอ ต่างจาก Mac)
+    (Windows ยอมให้หน้าต่างหลุดนอกจอ ต่างจาก Mac) + `--kiosk-printing` ปริ้นใบเสร็จเงียบไม่เด้ง dialog
+    (เดิมตั้งที่ Chrome ปกติ แต่หน้าสรุป/QR อยู่ใน Chromium ตัวนี้ → ต้องใส่ flag ที่ launch นี้ + ตั้ง thermal เป็น default printer)
   - 🍎 **Mac (เครื่องเทส)**: `tuckWindow()` ซุกเล็ก (380×260) มุมล่างขวา — Mac ดึงหน้าต่างนอกจอกลับเสมอ
     เลยซ่อนสนิทไม่ได้ แต่เป็นแค่เครื่อง dev
-- `revealWindow()` (CDP `setWindowBounds` normal + bringToFront) — เด้งเต็มจอตอนถึงหน้าสรุป/dryRun/error
+- `revealWindow()` — เด้ง**เต็มจอ (maximized)** + foreground ตอนถึงหน้าสรุป/dryRun/error
+  ⚠️ ลำดับสำคัญ (พิสูจน์ด้วยการอ่าน `getWindowBounds` บน Mac): **minimize → normal → maximized → bringToFront**
+  - minimize→restore = บังคับ OS ยกหน้าต่างมา foreground (bringToFront ดึงแค่ "แท็บ" ในตัว Chromium ไม่ยกหน้าต่างทับ Chrome หน้ากาก)
+  - **Mac: setWindowBounds normal+ขนาด ไม่ apply ขนาด** (ค้างที่ขนาด tuck ~500×375) → ต้อง `maximized` ถึงเต็มจอ (1470×847). restore ต้องเป็น `normal` ล้วนๆ (ใส่ bounds คู่จะ error "maximize a minimized window")
+  - Windows: หน้าต่างอยู่นอกจอ (-32000) → restore เป็น normal+bounds(60,40,1400×1000) ดึงกลับเข้าจอก่อน แล้ว maximized (แยก `process.platform`)
+  - ⚠️ **race จริง:** `setWindowBounds(normal)` ตอบกลับ **ก่อน** OS ออกจาก minimized เสร็จ → ยิง maximized ทันทีจะ error
+    "restore to normal first" (เจอเฉพาะหน้าหนักจริง ไม่เจอตอนเทสหน้าว่าง) → ต้อง **retry maximized วนรอ ~120ms ×8** จนสำเร็จ
 - screenshot **ต้องทำหลัง revealWindow เสมอ** (ถ้าหน้าต่างถูกย่อ/ซ่อน render จะหยุด → screenshot ค้าง)
 - หน้ากากโชว์ popup overlay เต็มจอเขียวกรม + spinner + **progress bar simulated** (`#overlay`) ข้อความ**ทางการ** (เผื่อ นทท.เห็นจอ)
   — progress bar ไม่ใช่ % จริง (`/api/book` ไม่ stream) วิ่งเข้าใกล้ 90% แล้วเด้ง 100% เมื่อ server ตอบ

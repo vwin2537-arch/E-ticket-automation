@@ -1,5 +1,6 @@
 // automation.js — กรอกฟอร์มจอง DNP แทนเรา หยุดที่หน้าสรุปก่อนจ่ายเงิน
 const { chromium } = require('playwright');
+const fs = require('fs');
 const path = require('path');
 const { PARK, VEHICLE_TYPES, TRAVELER_TYPES, TIME_SLOTS, SLOT_CLOSE_BUFFER_MIN } = require('./config');
 const { pickDate } = require('./datepicker');
@@ -7,6 +8,40 @@ const { thaiNames, interNames } = require('./names');
 
 const STATE_PATH = path.join(__dirname, '..', 'auth', 'storageState.json');
 const SHOT = (n) => path.join(__dirname, '..', 'auth', n);
+
+// สคริปต์ปริ้นใบเสร็จ — ก๊อปจากโปรเจค dnp-eticket-receipt (content script ล้วน ไม่ใช้ chrome.* API)
+// ฉีดเข้าหน้า DNP ที่ Playwright เปิด เพราะ Chromium ของ Playwright ไม่มี Chrome extension → ปุ่มปริ้นเดิมไม่ขึ้น
+// ⚠️ แก้ logic ปริ้นที่ ~/dnp-eticket-receipt แล้วก๊อปทับ src/receipt-inject/ (ดู CLAUDE.md)
+const RECEIPT_SCRIPT = (() => {
+  try {
+    const dir = path.join(__dirname, 'receipt-inject');
+    const core = fs.readFileSync(path.join(dir, 'receipt-core.js'), 'utf8');
+    const content = fs.readFileSync(path.join(dir, 'content.js'), 'utf8');
+    return `(function(){\n${core}\n${content}\n})()`; // ห่อ IIFE ให้ evaluate เป็น expression เดียว
+  } catch {
+    return null; // ไม่มีไฟล์ = ข้ามการฉีด (ระบบจองยังทำงานปกติ แค่ไม่มีปุ่มปริ้น)
+  }
+})();
+
+// ฉีดปุ่มปริ้นเข้าหน้า DNP ตอน load — เรียกผ่าน context.on('page') ครอบ "ทุกหน้าต่าง" ที่ DNP เปิดใหม่
+// (หน้าตั๋ว QR เข้าอุทยาน = จุดที่ต้องปริ้นจริง เด้งเป็น window.open ใหม่ ซึ่ง addInitScript ครอบไม่ถึง)
+// เช็ค host กันปุ่มโผล่หน้าจ่ายเงินคนละ domain + กันฉีดซ้ำในเอกสารเดิม (window.DNPReceipt มี = เคยฉีด;
+// document ใหม่ค่าหาย → ฉีดใหม่). SPA re-render พึ่ง setInterval ในสคริปต์เอง
+let receiptWidth = 80; // ขนาดใบเสร็จ (mm) — server ตั้งผ่าน setReceiptWidth ตามที่ จนท.เลือกตอนเปิดระบบ
+function setReceiptWidth(w) { receiptWidth = w === 57 ? 57 : 80; }
+
+async function injectReceiptButton(page) {
+  if (!RECEIPT_SCRIPT) return;
+  try {
+    if (new URL(page.url()).hostname !== 'e-ticket.dnp.go.th') return;
+    // ตั้งขนาดกระดาษปัจจุบันก่อน (receipt-core อ่าน window.__DNP_RECEIPT_WIDTH ตอนสร้างใบ) — อัปเดตทุกครั้งเผื่อเปลี่ยนค่า
+    await page.evaluate((w) => { window.__DNP_RECEIPT_WIDTH = w; }, receiptWidth).catch(() => {});
+    const already = await page.evaluate(() => !!window.DNPReceipt).catch(() => false);
+    if (!already) await page.evaluate(RECEIPT_SCRIPT);
+  } catch {
+    // best-effort — ฉีดไม่ได้ก็ไม่กระทบ flow จอง
+  }
+}
 
 // แปลงชื่อไทย -> อังกฤษ สำหรับโชว์ใน console (Windows cmd วาดไทยไม่ได้) — ไม่เจอก็คืนค่าเดิม
 const enVehicle = (m) => VEHICLE_TYPES.find((x) => x.match === m)?.en || m;
@@ -74,10 +109,26 @@ async function revealWindow(page) {
   try {
     const cdp = await page.context().newCDPSession(page);
     const { windowId } = await cdp.send('Browser.getWindowForTarget');
-    await cdp.send('Browser.setWindowBounds', {
-      windowId,
-      bounds: { left: 60, top: 40, width: 1400, height: 1000, windowState: 'normal' },
-    });
+    const set = (bounds) => cdp.send('Browser.setWindowBounds', { windowId, bounds });
+    const isWin = process.platform === 'win32';
+    // 1) minimize→restore: บังคับ OS เด้งหน้าต่างมา foreground (ทับ Chrome หน้ากาก) — bringToFront
+    //    อย่างเดียวดึงแค่ "แท็บ" ในตัว Chromium ไม่ยกตัวหน้าต่างมาทับ
+    await set({ windowState: 'minimized' });
+    if (isWin) {
+      // Windows: หน้าต่างถูกดันนอกจอ (-32000) — normal+bounds ดึงกลับเข้าจอ (Windows apply ขนาดได้)
+      await set({ left: 60, top: 40, width: 1400, height: 1000, windowState: 'normal' });
+    } else {
+      // Mac: tuck เล็กอยู่ในจอแล้ว — restore normal "ล้วนๆ" (ใส่ bounds คู่ normal บน Mac จะไม่ apply ขนาด)
+      await set({ windowState: 'normal' });
+    }
+    // 2) maximized เต็มจอ work area (Mac normal+bounds ขยายไม่ขึ้น ต้องใช้ maximized) — retry เพราะ
+    //    setWindowBounds(normal) ตอบกลับ "ก่อน" OS ออกจาก minimized จริง (race) → ยิง maximized เร็วไป
+    //    จะ error "restore to normal first" → วนรอจน OS พร้อมแล้วค่อยสำเร็จ (สูงสุด ~1 วิ)
+    for (let i = 0; i < 8; i++) {
+      await page.waitForTimeout(120);
+      const ok = await set({ windowState: 'maximized' }).then(() => true).catch(() => false);
+      if (ok) break;
+    }
     await page.bringToFront();
   } catch (e) {
     // best-effort — ถ้าดึงไม่ได้ หน้าต่างยังย่ออยู่แต่ระบบยังทำงานต่อได้
@@ -115,7 +166,9 @@ function launchBrowser(headless = false) {
       '--disable-backgrounding-occluded-windows',
       '--disable-renderer-backgrounding',
       '--disable-background-timer-throttling',
-      ...(isWin ? ['--window-position=-32000,-32000'] : []),
+      // Windows (เครื่องด่าน): ดันนอกจอ + ปริ้นเงียบไม่เด้ง dialog (เดิมตั้งที่ Chrome ปกติ
+      // แต่หน้าสรุป/QR อยู่ใน Chromium ตัวนี้ ต้องใส่ flag ที่ launch นี้แทน) — ตั้ง thermal เป็น default printer
+      ...(isWin ? ['--window-position=-32000,-32000', '--kiosk-printing'] : []),
     ],
   });
 }
@@ -162,6 +215,11 @@ async function warmTab(date, opts = {}) {
   const isWin = process.platform === 'win32';
   const browser = await launchBrowser(headless);
   const context = await browser.newContext({ storageState: STATE_PATH, viewport: { width: 1400, height: 1000 } });
+  // ดักทุกหน้าที่เปิดใน context (หน้าหลัก + popup จ่าย/ตั๋ว) แล้วฉีดปุ่มปริ้นตอน load
+  context.on('page', (p) => {
+    p.on('domcontentloaded', () => injectReceiptButton(p));
+    p.on('load', () => injectReceiptButton(p));
+  });
   const page = await context.newPage();
   if (!headless && !isWin) await tuckWindow(page); // Mac: ซุกเล็กมุมจอ (Windows ดันนอกจอผ่าน arg แล้ว)
 
@@ -329,4 +387,4 @@ async function checkLogin() {
   }
 }
 
-module.exports = { runBooking, warmTab, fillBooking, checkLogin, todayISO, bookDate, readTimeSlots };
+module.exports = { runBooking, warmTab, fillBooking, checkLogin, todayISO, bookDate, readTimeSlots, setReceiptWidth };

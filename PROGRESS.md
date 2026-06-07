@@ -26,6 +26,32 @@ dropdown เวลาเปิดค้าง มีรอบ "11:45-15:30" โ�
 ✅ เทส: readTimeSlots (วันนี้ปิดคู่/พรุ่งนี้เปิดคู่) + pool เด้งพรุ่งนี้ + selectOption ฟ้อง 0.11วิ + server path จริง.
 commit `d0270d8` push แล้ว + อัพ zip Windows. ⏳ รอเทส Windows จริง. → lesson
 
+### 🆕 (7/6/69 #2) หน้าสรุปเด้งหน้าจอ + มีปุ่มปริ้นในหน้า Playwright
+2 ปัญหาที่เครื่องด่าน ต้นเหตุเดียวกัน (หน้าสรุป/QR อยู่ใน Chromium ของ Playwright = คนละตัวกับ Chrome ปกติ):
+1) **หน้าสรุปหลบหลังหน้ากาก จนท.ไม่เห็น** → `revealWindow()` เพิ่ม CDP **minimize→normal** ก่อน `bringToFront`
+   (bringToFront ดึงแค่แท็บในตัว Chromium ไม่ยกหน้าต่างมาทับ Chrome หน้ากาก)
+2) **ไม่มีปุ่มปริ้น** (extension `dnp-eticket-receipt` อยู่แค่ Chrome ปกติ) → ก๊อป `receipt-core.js`+`content.js`
+   มาไว้ `src/receipt-inject/` แล้วฉีดเข้าหน้า DNP (สคริปต์ไม่ใช้ chrome.* API ฉีดได้ตรงๆ) + `--kiosk-printing` (Windows) ปริ้นเงียบ
+   ⚠️ **flow จริง (พี่วินยืนยัน):** สรุป→เลือก QR→หน้าจ่าย**เด้งหน้าต่างใหม่**→หน้าเดิม waiting→นทท.จ่าย→ขึ้นปุ่ม "ดูตั๋ว"→
+   **QR เข้าอุทยานเด้งหน้าต่างใหม่ = จุดที่ต้องปริ้น**. ลองแรกใช้ `addInitScript` → เทสพบ**ครอบ window.open popup ไม่ถึง**
+   (`window.DNPReceipt` undefined ในหน้าตั๋ว) → เปลี่ยนเป็น `injectReceiptButton()` ดักที่ `context.on('page')`+event `load`
+   ✅ เทส offline ผ่าน: หน้าหลัก+popup ตั๋วมีปุ่ม / popup จ่ายเงินคนละ host ไม่มีปุ่ม (ไม่รั่ว)
+   ⏳ **รอเทส live**: หน้าสรุปเด้งทับ + ปุ่ม 🖨️ ขึ้นในหน้าตั๋วท้ายสุด + ปริ้นออก
+
+### 🆕 (7/6/69 #3) หน้าสรุปเต็มจอ (Mac) + เลือกขนาดกระดาษ 57/80mm + เทส live 4 ใบ
+- **เทส live เอง 4 ใบ:** pipeline เป๊ะ (3 ใบเข้าคิว pending 1→2→3, ใบ4 reject ทันที) + ปุ่มปริ้นขึ้นหน้าสรุป (เห็นใน shot)
+  ⚠️ เจอ **orphan chromium สะสม** จาก `npm run restart` (kill -9 ไม่ graceful) — แก้ด้วย `npm stop` (เลี่ยง restart ตอน dev)
+- **หน้าสรุปเด้งเล็กมุมขวาบน Mac** (ไม่เต็มจอ): พบ `revealWindow` เดิม (minimize→normal+ขนาด) **Mac ไม่ apply ขนาด** ค้าง ~500×375
+  (screenshot เต็มเพราะยึด viewport ไม่ใช่ขนาดหน้าต่างจริง — หลอกตา). แก้: **minimize→normal→maximized + retry** ได้ 1470×838
+  (race: setWindowBounds(normal) ตอบก่อน OS ออกจาก minimized → maximized error → retry วนรอ). ✅ พิสูจน์ getWindowBounds ใน flow จริง แยก Mac/Windows
+- **เลือกขนาดกระดาษ 57/80mm** (พี่วินมีเครื่องปริ้น 2 ขนาด): modal ถามครั้งเดียวตอนเปิดหน้ากาก → server เก็บ in-memory →
+  ฉีด `window.__DNP_RECEIPT_WIDTH` เข้าหน้าตั๋ว → `receipt-core` parametrize (QR 38/42mm). ปริ้น silent ไป default printer (ตั้งเอง)
+  ✅ เทส: API (null→ถาม/57/fallback80), render 57+80, modal เด้ง+กดเลือก+chip. ⏳ รอพี่จ่ายจริงดูใบเสร็จ 57mm + หน้าตั๋วเต็มจอ
+  ⚠️ แก้ `receipt-core.js` 2 ที่ (ต้นฉบับ `~/dnp-eticket-receipt` + สำเนา `src/receipt-inject/`)
+- 💡 **บทเรียนเสียเวลา:** แก้ revealWindow แล้วพี่วินบอก "ยังไม่เต็มจอ" — ที่จริง `npm start/stop` ของ AI **fail เงียบ**
+  เพราะ cwd ค้างที่ `/Users/ovatina` (จาก `cd` ตอน zip) หา package.json ไม่เจอ → server เก่าโค้ดเดิมรันอยู่ พี่วินเลยเทสโค้ดเก่า
+  → **start server ด้วย path เต็ม `node /abs/.../src/server.js`** (cwd-independent) + ยืนยันโค้ดใหม่รันจริงด้วย log ก่อนสรุป
+
 ## รอทำ / รอตัดสินใจ ⏳
 - **ทดสอบ end-to-end จริง**: กด "ต่อไป" ดูหน้าสรุปว่าหยุดถูกที่ + ยังไม่จ่าย (รอพี่วินโอเค เป็นระบบจริงหน่วยงาน)
 - **เทส Windows จริงที่ด่าน**: #2 graceful shutdown, pipeline ดักหลายใบ, รอบเวลา data-driven, ซ่อนหน้าต่างสนิท
