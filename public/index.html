@@ -164,7 +164,7 @@ async function init() {
   SLOT_CLOSE_BUFFER_MIN = CFG.slotCloseBufferMin ?? SLOT_CLOSE_BUFFER_MIN; // ใช้ค่ากลางจาก backend
 
   $('date').min = localISO(new Date());
-  $('date').onchange = () => { rebuildTimeSlots(); renderWarm(); }; // เปลี่ยนวัน → คิดรอบเวลา + อัปเดตสถานะ warm
+  $('date').onchange = () => { dateTouched = true; rebuildTimeSlots(); renderWarm(); }; // พี่วินเลือกวันเอง → ไม่ snap ทับ
   $('addVeh').onclick = () => { $('vehicles').appendChild(vehRow('รถยนต์ 4 ล้อ', true)); recalc(); };
 
   // dropdown เพิ่มประเภทอื่น
@@ -193,7 +193,9 @@ async function init() {
 // ล้างฟอร์มกลับเป็นค่าเริ่มต้น (วันนี้ / รถ 1 คัน / คน 0) — ใช้ตอนโหลดหน้า + ปุ่ม "ล้างฟอร์ม"
 // ไม่แตะ event handler/options/polling (ผูกครั้งเดียวใน init) เลยไม่ต้องโหลดหน้าใหม่
 function resetForm() {
-  $('date').value = bookDateLocal(); // วันเป้าหมาย (วันนี้ก่อน 15:20 / พรุ่งนี้หลัง) ให้ตรงกับ warm pool
+  dateTouched = false;               // กลับมาให้ pool snap วันเป้าหมายจริงได้อีก
+  // ค่าเริ่มต้นชั่วคราว (เดาตามเวลา) — เดี๋ยว pollWarm จะ snap เป็นวันที่ DNP เปิดจริงให้
+  $('date').value = (warmCache && warmCache.bookDate) || bookDateLocal(); // วันเป้าหมายให้ตรงกับ warm pool
   $('vehicles').innerHTML = ''; $('vehicles').appendChild(vehRow('รถยนต์ 4 ล้อ'));
   $('travelers').innerHTML = '';
   CFG.travelers.filter((x) => x.featured).forEach((x) => $('travelers').appendChild(travRow(x)));
@@ -206,8 +208,10 @@ function resetForm() {
   renderWarm();
 }
 
-// สถานะ warm pool — warm อุ่นไว้ "เฉพาะวันนี้" เลย render ตามวันที่ที่เลือก
+// สถานะ warm pool — warm อุ่นไว้ "วันเป้าหมายจริง" (data-driven) เลย render ตามวันที่ที่เลือก
 let warmCache = null;
+let dateTouched = false;   // พี่วินแก้วันเองหรือยัง — ถ้ายัง pollWarm จะ snap วันให้ตรง pool
+let lastSlotSig = '';      // ลายเซ็นรอบเวลาล่าสุด — rebuild dropdown เฉพาะตอนสถานะจริงเปลี่ยน
 function renderWarm() {
   const box = $('warmStatus');
   if (!warmCache) return;
@@ -251,7 +255,18 @@ function renderPending() {
   }
 }
 async function pollWarm() {
-  try { warmCache = await (await fetch('/api/pool-status')).json(); renderWarm(); renderPending(); } catch (e) { /* เงียบ ไม่บล็อกหน้า */ }
+  try {
+    warmCache = await (await fetch('/api/pool-status')).json();
+    // snap วันที่ default ให้ตรง "วันที่ DNP เปิดจริง" (ถ้าพี่วินยังไม่แก้วันเอง)
+    // เช่น วันนี้ DNP ปิดทุกรอบ → pool เด้งไปพรุ่งนี้ → หน้ากากตามไปพรุ่งนี้เอง
+    if (!dateTouched && warmCache.bookDate && $('date').value !== warmCache.bookDate) {
+      $('date').value = warmCache.bookDate;
+    }
+    renderWarm(); renderPending();
+    // rebuild รอบเวลาเฉพาะตอนวัน/สถานะรอบจริงเปลี่ยน (กัน rebuild ทุก 2.5 วิ รบกวนตอนเลือก)
+    const sig = (warmCache.bookDate || '') + JSON.stringify(warmCache.slots || []);
+    if (sig !== lastSlotSig) { lastSlotSig = sig; rebuildTimeSlots(); }
+  } catch (e) { /* เงียบ ไม่บล็อกหน้า */ }
 }
 
 // เช็กว่ายังเข้าระบบ DNP อยู่ไหม แล้วโชว์ไฟสถานะ + คุมปุ่มยืนยัน
@@ -281,33 +296,40 @@ async function checkLoginStatus(force = false) {
   }
 }
 
-// สร้างตัวเลือกรอบเวลาใหม่ตามวันที่ที่เลือก + เวลาปัจจุบัน
-// ถ้าเลือก "วันนี้" และใกล้เวลาสิ้นสุดของรอบ (เหลือ < BUFFER นาที) → ปิดรอบนั้น (เช่น เลย 11:35 = ปิดรอบเช้า)
+// สร้างตัวเลือกรอบเวลาตาม "สถานะจริงจาก DNP" (ไม่เดา buffer เวลาอีก)
+// live = รอบเวลาจริง [{text,disabled}] ที่ warm pool อ่านมาจาก DNP ของ "วันเป้าหมาย"
+//   - มี live (วันตรงกับที่ pool warm) → โชว์ disabled ตามที่ DNP บอกเป๊ะ (รอบที่ DNP เอาออก = ปิด)
+//   - ไม่มี live (จองวันอื่น/ยังไม่อุ่นเสร็จ) → โชว์ทุกรอบ ให้ DNP ตัดสินตอนกรอก (cold path)
+const norm = (s) => s.replace(/\s+/g, '');
 function rebuildTimeSlots() {
   const sel = $('time');
   const prev = sel.value;
   sel.innerHTML = '';
-  const isToday = $('date').value === localISO(new Date());
-  const now = new Date();
-  const nowMin = now.getHours() * 60 + now.getMinutes();
+  const live = (warmCache && $('date').value === warmCache.bookDate
+    && Array.isArray(warmCache.slots) && warmCache.slots.length) ? warmCache.slots : null;
 
   let firstOpen = null;
   CFG.timeSlots.forEach((s) => {
-    const closed = isToday && nowMin >= slotEndMin(s) - SLOT_CLOSE_BUFFER_MIN;
+    let closed = false;
+    if (live) {
+      const m = live.find((x) => norm(x.text) === norm(s));
+      closed = m ? m.disabled : true; // live มีข้อมูลแต่ไม่เจอรอบนี้ = DNP เอาออก = ปิด
+    }
     const opt = new Option(closed ? `${s} (ปิดรับแล้ว)` : s, s);
     opt.disabled = closed;
     sel.add(opt);
     if (!closed && firstOpen === null) firstOpen = s;
   });
 
-  if (firstOpen === null) {
-    // วันนี้เลย 15:30 — ปิดรับทุกรอบแล้ว
-    sel.add(new Option('— วันนี้ปิดรับแล้ว เลือกวันอื่นนะคะ —', ''));
+  if (firstOpen === null && live) {
+    // DNP ปิดทุกรอบของวันนี้แล้ว (pool กำลังเด้งไปพรุ่งนี้ — เดี๋ยว poll ถัดไป snap วันให้เอง)
+    sel.innerHTML = '';
+    sel.add(new Option('— วันนี้ปิดรับแล้ว กำลังเตรียมพรุ่งนี้ให้… —', ''));
     sel.value = '';
   } else {
     // คงค่าที่พี่วินเลือกไว้ถ้ายังเปิดอยู่ ไม่งั้นเด้งไปรอบที่เปิดรอบแรก
-    const prevStillOpen = CFG.timeSlots.includes(prev) && !(isToday && nowMin >= slotEndMin(prev) - SLOT_CLOSE_BUFFER_MIN);
-    sel.value = prevStillOpen ? prev : firstOpen;
+    const prevOpt = Array.from(sel.options).find((o) => o.value === prev && !o.disabled);
+    sel.value = prevOpt ? prev : (firstOpen || '');
   }
 }
 

@@ -25,6 +25,16 @@ async function selectOption(page, placeholder, index, matchText, { exact = false
     // รอ dropdown โผล่จริง แทนการรอเผื่อเวลา (ไปต่อทันทีที่ตัวเลือกพร้อม)
     await popper.waitFor({ state: 'visible', timeout: 3000 }).catch(() => {});
     const item = popper.locator('.el-select-dropdown__item', { hasText: matcher }).first();
+    // ตัวเลือกมีอยู่ "แต่ DNP ปิดรับ" (is-disabled) — คลิกไปก็ไม่ติด (Vue ไม่ commit)
+    // เคยทำให้บอทค้าง: คลิก disabled → verify ไม่ผ่าน → retry 3 ครั้งเสียเวลา dropdown ค้างเปิด
+    // เจอ disabled = ฟ้องชัดทันที ไม่เสียเวลา (getAttribute throw ถ้า item ยังไม่โหลด → ปล่อยให้ retry ปกติ)
+    const cls = await item.getAttribute('class').catch(() => null);
+    if (cls && cls.includes('is-disabled')) {
+      await page.keyboard.press('Escape').catch(() => {});
+      const err = new Error(`ตัวเลือก "${matchText}" ถูกปิดรับแล้ว`);
+      err.disabledOption = true;
+      throw err;
+    }
     try {
       await item.scrollIntoViewIfNeeded({ timeout: 3000 });
       await item.click({ timeout: 3000 });
@@ -110,6 +120,38 @@ function launchBrowser(headless = false) {
   });
 }
 
+// อ่านรอบเวลาจริงจาก DNP (หลังเลือกวันแล้ว) — คืน [{ text, disabled }] ตามที่ระบบโชว์
+// DNP ไม่ได้เอารอบออกจาก dropdown แต่ทำเป็น is-disabled (สีเทาคลิกไม่ติด) เมื่อใกล้/เลยเวลาปิด
+// หน้ากากเอาค่านี้ไปโชว์เฉพาะรอบที่เปิดจริง → ไม่ต้องเดา buffer เวลาอีก (single source = DNP เอง)
+async function readTimeSlots(page) {
+  const re = /\d{1,2}:\d{2}\s*-\s*\d{1,2}:\d{2}/; // เฉพาะ option ที่เป็นช่วงเวลา (ข้าม dropdown อื่น)
+  try {
+    const input = page.locator('input[placeholder="เลือกเวลา"]').first();
+    await input.click();
+    await page.locator('.el-select-dropdown:visible').last()
+      .waitFor({ state: 'visible', timeout: 3000 }).catch(() => {});
+    const items = page.locator('.el-select-dropdown__item');
+    // poll รอจนรอบเวลาโผล่จริง (options โหลดจาก API หลังเปิด dropdown — เร็วไม่เท่ากันแต่ละครั้ง)
+    let out = [];
+    for (let attempt = 0; attempt < 20; attempt++) {
+      out = [];
+      const n = await items.count();
+      for (let i = 0; i < n; i++) {
+        const text = (await items.nth(i).innerText().catch(() => '')).trim().replace(/\s+/g, ' ');
+        if (!re.test(text)) continue;
+        const cls = (await items.nth(i).getAttribute('class').catch(() => '')) || '';
+        out.push({ text, disabled: cls.includes('is-disabled') });
+      }
+      if (out.length) break;
+      await page.waitForTimeout(150);
+    }
+    await page.keyboard.press('Escape').catch(() => {}); // ปิด dropdown กลับสู่ standby
+    return out;
+  } catch {
+    return []; // อ่านไม่ได้ = ปล่อยว่าง หน้ากาก fallback โชว์ทุกรอบ (ให้ DNP ตัดสินตอนกรอก)
+  }
+}
+
 /**
  * warmTab(date, opts) — Phase A "อุ่นเครื่อง": เปิด browser → คลิกการ์ด → เลือกวัน
  * คืน { browser, context, page, date, warmedAt } พร้อมให้ fillBooking กรอกต่อ (ซ่อนนอกจอ)
@@ -144,7 +186,10 @@ async function warmTab(date, opts = {}) {
     // รอตัวเลือก (เวลา/รถ/ผู้เดินทาง) โหลดจาก API หลังเลือกวัน — จบ warm พร้อม standby
     await page.waitForLoadState('networkidle').catch(() => {});
 
-    return { browser, context, page, date, warmedAt: Date.now() };
+    // อ่านรอบเวลาจริง (disabled/enabled) ไว้ให้หน้ากากโชว์ตามจริง — ไม่ต้องเดาเวลา
+    const timeSlots = await readTimeSlots(page);
+
+    return { browser, context, page, date, warmedAt: Date.now(), timeSlots };
   } catch (err) {
     await browser.close().catch(() => {}); // warm พลาด — ไม่ทิ้ง browser ค้าง
     throw err;
@@ -284,4 +329,4 @@ async function checkLogin() {
   }
 }
 
-module.exports = { runBooking, warmTab, fillBooking, checkLogin, todayISO, bookDate };
+module.exports = { runBooking, warmTab, fillBooking, checkLogin, todayISO, bookDate, readTimeSlots };

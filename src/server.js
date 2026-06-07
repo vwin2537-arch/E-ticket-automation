@@ -1,7 +1,7 @@
 // server.js — หน้ากาก web app + API สั่ง automation
 const express = require('express');
 const path = require('path');
-const { fillBooking, checkLogin, bookDate } = require('./automation');
+const { fillBooking, checkLogin } = require('./automation');
 const pool = require('./pool');
 const { logUsage } = require('./logger');
 const { PARK, POOL_SIZE, MAX_PENDING, TIME_SLOTS, SLOT_CLOSE_BUFFER_MIN, VEHICLE_TYPES, TRAVELER_TYPES } = require('./config');
@@ -31,11 +31,11 @@ app.get('/api/login-status', async (req, res) => {
 });
 
 // สถานะ warm pool ให้หน้ากากโชว์ว่าอุ่นแท็บไว้กี่ใบแล้ว (1/3, 2/3, 3/3)
-// warm อุ่นไว้ "วันเป้าหมาย" (วันนี้ก่อน 15:20 / พรุ่งนี้หลัง 15:20) — ส่ง bookDate ให้หน้ากากเทียบ
+// bookDate + slots มาจาก pool (data-driven จาก DNP จริง) — หน้ากากเอา slots ไปโชว์เฉพาะรอบที่เปิด
 // pending = ใบจริงที่ดักรอจ่ายค้างอยู่ (#5) — prune ก่อนนับ เอาใบที่ จนท.ปิดหน้าต่างไปแล้วออก
 app.get('/api/pool-status', (req, res) => {
   prunePending();
-  res.json({ ...pool.status(), size: POOL_SIZE, bookDate: bookDate(), pending: pendingTabs.length, maxPending: MAX_PENDING });
+  res.json({ ...pool.status(), size: POOL_SIZE, pending: pendingTabs.length, maxPending: MAX_PENDING });
 });
 
 // กันงานค้างล็อกทั้งระบบ: ถ้า fillBooking ค้าง (DNP ไม่ตอบ) ครอบด้วย timeout

@@ -15,7 +15,10 @@
 npm run login   # ครั้งแรก/เมื่อ session หมด: เปิดเบราว์เซอร์ให้ login เอง แล้ว save
 npm start       # เปิดหน้ากาก + อุ่น warm pool (เปิด POOL_SIZE แท็บกดการ์ด+เลือกวันนี้รอ — ใช้เวลา ~10วิ/แท็บ)
 npm run restart # แก้โค้ดแล้วเปิดใหม่ — ฆ่าตัวเก่าที่ถือ port ก่อน (อย่าใช้ start ซ้ำ เดี๋ยว port ชนตายเงียบ)
+npm stop        # ปิดระบบ — ปิด server + เก็บ Chrome (ms-playwright) ที่หลุด orphan ทั้งหมด (Mac เท่านั้น ใช้ lsof)
 ```
+**ปิดปกติ:** กลับไปหน้าต่างที่รัน `npm start` แล้วกด `Ctrl+C` (server ปิด browser ให้เองผ่าน graceful shutdown)
+**ถ้าเผลอปิดหน้าต่าง/ค้าง:** `npm stop` กวาดเก็บ orphan ที่ Ctrl+C เก็บไม่ทัน
 
 ## GitHub
 **Repo:** https://github.com/vwin2537-arch/E-ticket-automation
@@ -42,10 +45,11 @@ git clone https://github.com/vwin2537-arch/E-ticket-automation.git
 ## โครงไฟล์
 - `src/config.js` — ตัวเลือกฟอร์ม (เวลา/ยานพาหนะ/ประเภทผู้เดินทาง + ราคา) + `POOL_SIZE` ← แก้ตรงนี้ถ้าระบบเปลี่ยน
   มี field `en` ทุกประเภท (ยานพาหนะ/ผู้เดินทาง) ไว้โชว์ใน console เป็นอังกฤษ — เพิ่มประเภทใหม่อย่าลืมใส่ `en`
-- `src/automation.js` — `warmTab()` (Phase A: เปิด→การ์ด→เลือกวัน) + `fillBooking()` (Phase B: เวลา/รถ/คน→สรุป)
-  + `runBooking()` (warm+fill รวม สำหรับ cold path/สคริปต์เทส) + `bookDate()` (วันเป้าหมาย: วันนี้ก่อน 15:20 / พรุ่งนี้หลัง)
-- `src/pool.js` — warm pool: `init()` อุ่น POOL_SIZE แท็บตอน start, `acquire(date)` หยิบ+เติมคืน
-  warm ตาม `bookDate()` (วันนี้ก่อน 15:20 / พรุ่งนี้หลัง) — acquire ทิ้งแท็บที่ไม่ตรงวันเป้าหมาย (ข้ามวัน/เลย cutoff)
+- `src/automation.js` — `warmTab()` (Phase A: เปิด→การ์ด→เลือกวัน + `readTimeSlots()` อ่านรอบจริง) + `fillBooking()`
+  (Phase B: เวลา/รถ/คน→สรุป; `selectOption` ฟ้องถ้ารอบ `is-disabled`) + `runBooking()` (warm+fill รวม cold path/เทส)
+  + `bookDate()` (seed วันเป้าหมาย: วันนี้ก่อน 15:20 / พรุ่งนี้หลัง)
+- `src/pool.js` — warm pool: `init()` อุ่น POOL_SIZE แท็บตอน start, `acquire(date)` หยิบ+เติมคืน. `targetDate` data-driven
+  (วันนี้ปิดทุกรอบ → เด้งพรุ่งนี้เอง) + `slots` รอบเวลาจริงจาก DNP — ทั้งคู่ส่งผ่าน `status()`. acquire ทิ้งแท็บไม่ตรง targetDate
 - `src/datepicker.js` — เลือกวันใน Element UI date picker
 - `src/names.js` — generate ชื่อมั่วๆ (ระบบไม่เช็กชื่อจริง)
 - `src/server.js` — Express + API `/api/config`, `/api/book`, `/api/login-status`, `/api/pool-status` (สถานะ warm: ready/warming/size/today)
@@ -92,13 +96,16 @@ session อยู่ได้นานเป็นปี (refresh_token) → **�
 **ไม่ปิดใบเก่า** จนท.กรอกใบถัดไปได้เลยระหว่างคนแรกจ่าย. ใบทดสอบใช้ `lastDryTab` (ใบเดียว ปิดอันเก่า ไม่เข้าคิว).
 แยกทดสอบ/จริงกันบัค: กด "โหมดทดสอบ" คั่นระหว่างใบจริงรอจ่าย ใบจริงไม่หาย (เงินไม่หาย)
 
-## ⚠️ รอบเวลา: ปิดรอบในหน้ากากก่อนเวลาจริง 10 นาที (`SLOT_CLOSE_BUFFER_MIN` ใน **config.js** → ส่ง frontend ผ่าน /api/config)
-DNP เอา option รอบออกจาก dropdown **ก่อนเวลาสิ้นสุดเป๊ะ** (เช่นรอบเช้าหายก่อน 11:45) → ถ้า จนท.เลือกรอบที่ใกล้ปิด
-บอท `selectOption('เลือกเวลา')` หาไม่เจอ → error "ไม่กรอก ค้างหน้าเลือกวัน". แก้: หน้ากากปิดรอบล่วงหน้า 10 นาที
-(`rebuildTimeSlots` หัก buffer) + `automation.js` error เวลาบอกชัด "รอบนี้อาจปิดรับแล้ว ลองเลือกรอบอื่น".
-ปรับ buffer ได้ที่ค่าเดียว `SLOT_CLOSE_BUFFER_MIN`. **เทส/เดโมเลี่ยงช่วงคาบเกี่ยวเวลาปิดรอบ** (กันสับสน)
-**เลย cutoff (15:20) ระบบเด้งไปจอง "พรุ่งนี้" อัตโนมัติ** (`bookDate()`): warm pool + default วันในหน้ากากเปลี่ยนเป็นพรุ่งนี้
-จนถึงเที่ยงคืน แล้วกลับมา "วันนี้" เอง — รองรับ นทท.ช่วงเย็นที่จองของวันถัดไป (แก้ AUDIT #3 3/6/69)
+## ⚠️ รอบเวลา: data-driven จาก DNP จริง — ไม่เดา buffer (แก้ 7/6/69)
+**กลไก DNP:** ไม่เอารอบออกจาก dropdown แต่ทำเป็น `is-disabled` (สีเทาคลิกไม่ติด) ก่อนเวลาปิดจริง — และปิด
+**เร็วกว่า buffer ที่เดา** (รอบบ่ายโดน disable ตั้งแต่ ~15:12 ทั้งที่จบ 15:30). คลิก disabled = Vue ไม่ commit →
+บอทค้าง "เลือกเวลาไม่ได้". **เลิกเดา → อ่านจริง:** `warmTab` เรียก `readTimeSlots()` อ่าน `{text,disabled}` จาก DNP
+ติดมากับ tab → `pool` ส่งผ่าน `status().slots` → `/api/pool-status` → หน้ากากโชว์เฉพาะรอบที่ DNP เปิดจริง
+(`rebuildTimeSlots` ใช้ `warmCache.slots` ไม่ใช่ buffer). `selectOption` เจอ `is-disabled` ฟ้องทันที (ตาข่ายชั้นสุดท้าย).
+**วันเป้าหมาย data-driven (`pool.targetDate`):** seed = `bookDate()` (วันนี้ก่อน 15:20 / พรุ่งนี้หลัง) แต่ถ้าอุ่น "วันนี้"
+แล้ว DNP ปิด **ทุกรอบ** → pool เด้งอุ่น "พรุ่งนี้" เอง; หน้ากาก snap วันตาม `bookDate` จาก pool (เว้นพี่วินแก้วันเอง).
+`SLOT_CLOSE_BUFFER_MIN` เหลือเป็นแค่ seed ของ `bookDate()` (ไม่ใช้ปิดรอบในหน้ากากแล้ว).
+**diag:** `node scripts/diag-timeslot.js <YYYY-MM-DD>` อ่านรอบเวลา+disabled แบบอ่านอย่างเดียว (ไม่จอง) ไว้ debug
 
 ## pipeline จองดักหลายใบ (#5) — ✅ ทำแล้ว (3/6/69)
 `pendingTabs[]` คิวใบจริงสูงสุด `MAX_PENDING`=3 (config.js). จองใบใหม่ **push เข้าคิว ไม่ปิดใบเก่า**.

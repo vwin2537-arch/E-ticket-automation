@@ -1,6 +1,6 @@
 # PROGRESS.md — DNP E-Ticket Auto-fill
 
-## สถานะ: 🟢 ใช้งานได้ + warm pool + แก้บั๊ก pipeline (คิว/orphan) เทส live ผ่าน — อัพเดทล่าสุด 4/6/69
+## สถานะ: 🟢 ใช้งานได้ + รอบเวลา data-driven (เลิกเดา buffer) — อัพเดทล่าสุด 7/6/69
 
 ## ทำแล้ว ✅
 - Setup Node + Playwright + Express
@@ -71,6 +71,17 @@
   ออกก่อน 11:45 เป๊ะ → selectOption หาไม่เจอ → error**. ไม่ใช่โค้ดพัง/ไม่ใช่ pipeline. แก้ 2 จุด: (1) `index.html`
   `SLOT_CLOSE_BUFFER_MIN=10` ปิดรอบในหน้ากากก่อนเวลาจริง 10 นาที (กัน race ขอบเวลา) (2) `automation.js` error เวลา
   ชัดขึ้น "รอบนี้อาจปิดรับแล้ว ลองเลือกรอบอื่น" (เดิม "ระบบช้า ลองใหม่" = กำกวม). → lesson
+- **(7/6/69) แก้บั๊ก "บอทไม่กรอก หยุดแค่เลือกวัน+เวลา" — รอบเวลา data-driven (เลิกเดา buffer)**
+  อาการ (อาการเดิมกลับมา): กดยืนยัน 15:12 → บอทเลือกวันได้ เลือกเวลาไม่ได้ ไม่ไปต่อ. **หลักฐาน:** shot-error เห็น
+  dropdown เวลาเปิดค้าง มีรอบ "11:45-15:30" โชว์อยู่ แต่ usage.csv ว่า "เลือกรอบไม่ได้". **root cause (ยืนยันด้วย
+  `scripts/diag-timeslot.js` อ่านสด):** DNP **ไม่เอารอบออกจาก dropdown** แต่ทำเป็น `is-disabled` (สีเทาคลิกไม่ติด)
+  ก่อนเวลาปิดจริง — รอบบ่ายโดน disable ตั้งแต่ ~15:12 (ก่อน 15:30 ตั้ง 18 นาที > buffer 10) → หน้ากากยังเสนอ →
+  บอทคลิก disabled → Vue ไม่ commit → verify ไม่ผ่าน → retry 3 ครั้ง → ยอมแพ้ (dash/format **ไม่ใช่ปัญหา**).
+  **แก้แบบไม่เดาเวลา (single source = DNP เอง):** (1) `automation.js` `readTimeSlots()` อ่าน disabled/enabled จริง
+  ตอน warm → ติดมากับ tab; `selectOption` เจอ `is-disabled` ฟ้องทันที (0.11วิ แทน ~3วิ retry). (2) `pool.js` เก็บ
+  `slots`+`targetDate` ส่งผ่าน status; วันนี้ปิดทุกรอบ → เด้งอุ่น "พรุ่งนี้" เอง. (3) `server.js` /api/pool-status ส่ง
+  `slots`+`bookDate` จาก pool. (4) `index.html` โชว์รอบตาม slots จริง (เลิกใช้ buffer) + snap วันตาม pool อัตโนมัติ.
+  ✅ เทส: readTimeSlots (วันนี้ปิดคู่/พรุ่งนี้เปิดคู่) + pool เด้งพรุ่งนี้ + selectOption ฟ้อง 0.11วิ. ⏳ รอเทส server+Windows. → lesson
 - **(3/6/69) ลอง pipeline จองดักหลายใบ → REVERT ออก** (คนละเรื่องกับบัคบน — pipeline ไม่ใช่ต้นเหตุ) — ลองให้ค้าง
   รอจ่าย 3 ใบ (`pendingTabs`/`MAX_PENDING`/`revealWindow(page,slot)`) แล้ว revert กลับ `lastTab` เดิม. เก็บไว้ทำใหม่ทีหลัง
 

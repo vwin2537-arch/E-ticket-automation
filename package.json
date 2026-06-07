@@ -6,7 +6,8 @@
   "scripts": {
     "login": "node scripts/login.js",
     "start": "node src/server.js",
-    "restart": "lsof -ti:5179 | xargs kill -9 2>/dev/null; sleep 1; node src/server.js"
+    "restart": "lsof -ti:5179 | xargs kill -9 2>/dev/null; sleep 1; node src/server.js",
+    "stop": "lsof -ti:5179 | xargs kill 2>/dev/null; sleep 2; lsof -ti:5179 | xargs kill -9 2>/dev/null; pkill -f ms-playwright 2>/dev/null; echo 'หยุดระบบจองเอราวัณ + ปิด Chrome ครบแล้ว'; true"
   },
   "keywords": [],
   "author": "",
