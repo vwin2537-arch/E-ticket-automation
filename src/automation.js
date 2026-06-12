@@ -116,7 +116,15 @@ async function revealWindow(page) {
     await set({ windowState: 'minimized' });
     if (isWin) {
       // Windows: หน้าต่างถูกดันนอกจอ (-32000) — normal+bounds ดึงกลับเข้าจอ (Windows apply ขนาดได้)
-      await set({ left: 60, top: 40, width: 1400, height: 1000, windowState: 'normal' });
+      // ⚠️ ต้อง "ยืนยัน" ว่า normal apply จริง (อ่าน getWindowBounds) ก่อนไป maximized — ไม่งั้น race
+      //    ทำให้ restore bounds ค้างที่ -32000 → พอ จนท.กด restore-down/ย่อ หน้าต่างเด้งหายนอกจอ
+      for (let i = 0; i < 10; i++) {
+        await set({ left: 60, top: 40, width: 1400, height: 1000, windowState: 'normal' }).catch(() => {});
+        const b = await cdp.send('Browser.getWindowBounds', { windowId })
+          .then((r) => r.bounds).catch(() => null);
+        if (b && b.left >= 0 && b.top >= 0) break; // restore bounds อยู่บนจอจริงแล้ว
+        await page.waitForTimeout(120);
+      }
     } else {
       // Mac: tuck เล็กอยู่ในจอแล้ว — restore normal "ล้วนๆ" (ใส่ bounds คู่ normal บน Mac จะไม่ apply ขนาด)
       await set({ windowState: 'normal' });
@@ -219,6 +227,9 @@ async function warmTab(date, opts = {}) {
   context.on('page', (p) => {
     p.on('domcontentloaded', () => injectReceiptButton(p));
     p.on('load', () => injectReceiptButton(p));
+    // Windows: popup จ่ายเงิน/ตั๋ว QR เปิดเป็น "หน้าต่างใหม่" → เกิดที่ตำแหน่ง default -32000 ตาม launch flag
+    // = โผล่นอกจอ จนท.มองไม่เห็น/ปิดไม่ได้ → ดึงกลับเข้าจอ+โฟกัส. หน้าหลัก (opener=null) ไม่แตะ ปล่อยซ่อนตอนกรอก
+    if (isWin) p.opener().then((opener) => { if (opener) revealWindow(p); }).catch(() => {});
   });
   const page = await context.newPage();
   if (!headless && !isWin) await tuckWindow(page); // Mac: ซุกเล็กมุมจอ (Windows ดันนอกจอผ่าน arg แล้ว)

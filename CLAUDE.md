@@ -141,6 +141,11 @@ session อยู่ได้นานเป็นปี (refresh_token) → **�
   - Windows: หน้าต่างอยู่นอกจอ (-32000) → restore เป็น normal+bounds(60,40,1400×1000) ดึงกลับเข้าจอก่อน แล้ว maximized (แยก `process.platform`)
   - ⚠️ **race จริง:** `setWindowBounds(normal)` ตอบกลับ **ก่อน** OS ออกจาก minimized เสร็จ → ยิง maximized ทันทีจะ error
     "restore to normal first" (เจอเฉพาะหน้าหนักจริง ไม่เจอตอนเทสหน้าว่าง) → ต้อง **retry maximized วนรอ ~120ms ×8** จนสำเร็จ
+  - ⚠️ **restore bounds (Windows) ต้องยืนยันด้วย `getWindowBounds`** (7/6/69 #3): race เดียวกันทำให้ set `normal{60,40}`
+    ไม่ apply → restore bounds ค้าง -32000 → จนท.กด **restore-down/ย่อ → หน้าต่างหายนอกจอ**. แก้: Windows วน set normal
+    + อ่าน `getWindowBounds` ยืนยัน left/top≥0 ก่อนไป maximized
+- **popup จ่ายเงิน/ตั๋ว QR (Windows) เกิดนอกจอด้วย** (7/6/69 #3): หน้าต่างใหม่เกิดที่ default -32000 ตาม launch flag →
+  `context.on('page')` ต้องเรียก `revealWindow` กับ popup (`opener()≠null`) ดึงกลับเข้าจอ — หน้าหลัก (opener=null) ปล่อยซ่อนตอนกรอก
 - screenshot **ต้องทำหลัง revealWindow เสมอ** (ถ้าหน้าต่างถูกย่อ/ซ่อน render จะหยุด → screenshot ค้าง)
 - หน้ากากโชว์ popup overlay เต็มจอเขียวกรม + spinner + **progress bar simulated** (`#overlay`) ข้อความ**ทางการ** (เผื่อ นทท.เห็นจอ)
   — progress bar ไม่ใช่ % จริง (`/api/book` ไม่ stream) วิ่งเข้าใกล้ 90% แล้วเด้ง 100% เมื่อ server ตอบ
