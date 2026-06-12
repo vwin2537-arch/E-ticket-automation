@@ -5,3 +5,5 @@ logs/usage.csv
 logs/*.log
 dnp-eticket-windows.zip
 *.DS_Store
+ticket-rendered.html
+queq-*

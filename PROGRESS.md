@@ -1,6 +1,22 @@
 # PROGRESS.md — DNP E-Ticket Auto-fill
 
-## สถานะ: 🟢 ใช้งานได้ + รอบเวลา data-driven (เลิกเดา buffer) — อัพเดทล่าสุด 7/6/69
+## สถานะ: 🟢 ใช้งานได้ + รอบเวลา data-driven (เลิกเดา buffer) — อัพเดทล่าสุด 12/6/69
+
+### 🆕 (12/6/69) ใบเสร็จเพิ่มตารางสรุปค่าบริการ (กันไกด์โกงหัว) — sync จาก dnp-eticket-receipt
+`receipt-core.js` (สำเนาใน `src/receipt-inject/`) เพิ่ม `getOrder()` scrape กล่อง "สรุปค่าบริการ" บนหน้าตั๋ว →
+ใบเสร็จโชว์ตารางแยกประเภท+จำนวน+ราคา+ยอดรวม แบบใบเสร็จห้างฯ. **แก้ที่ต้นทาง `~/dnp-eticket-receipt` แล้วก๊อปทับ**
+(รายละเอียด+selector อยู่ PROGRESS/CLAUDE ของโปรเจคนั้น). ✅ เทส jsdom ผ่าน. ⏳ รอเทส end-to-end: ปุ่มฉีดในหน้าตั๋วสด → ปริ้นออกมามีตาราง
+
+### 🆕 (7/6/69 #3) แก้บั๊ก Windows: หน้าต่างหายนอกจอ ตอนกดย่อ/เลือกจ่ายเงิน
+อาการ (เครื่องด่าน Windows): หน้าสรุปเด้งเต็มจอ (maximized) ปกติ **แต่** (1) กด restore-down/ย่อ → หน้าต่างหายนอกจอ
+เปิด/ปิดไม่ได้ (workaround เดิ มต้องลากแถบ title ก่อน) (2) เลือกวิธีจ่ายเงิน+ยืนยัน → หน้าต่าง QR จ่ายเงินที่ควรเด้งใหม่
+กลับหายหลังจอ. **root cause เดียวกัน = launch flag `--window-position=-32000,-32000`:** (1) `revealWindow` ตั้ง
+`normal{60,40}` มี race → ไม่ apply → "restore bounds" ค้างที่ -32000 → กดย่อเด้งกลับนอกจอ. (2) popup จ่าย/ตั๋ว
+เกิดที่ตำแหน่ง default -32000 ตาม flag → โผล่นอกจอ. **แก้ (`automation.js`):** (1) `revealWindow` Windows วน set
+`normal` + **ยืนยันด้วย `getWindowBounds` ว่า left/top≥0** ก่อนไป maximized (restore bounds อยู่บนจอจริง). (2)
+`context.on('page')` ดึง popup (`opener()≠null`) กลับเข้าจอด้วย `revealWindow` — หน้าหลัก (opener=null) ไม่แตะ.
+⏳ **รอเทส Windows จริง** (Mac reproduce ไม่ได้ — flag ใช้เฉพาะ Windows; guard `isWin` ไม่กระทบ Mac dev)
+
 
 > 📦 ประวัติงาน + บทเรียนเก่า (setup → 3/6/69) ย้ายไป [PROGRESS_ARCHIVE.md](PROGRESS_ARCHIVE.md)
 > 🔧 technical detail/กฎทั้งหมดอยู่ [CLAUDE.md](CLAUDE.md) — ไฟล์นี้เก็บแค่ timeline + สถานะ

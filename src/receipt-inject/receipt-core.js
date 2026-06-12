@@ -55,10 +55,50 @@
     return blocks;
   }
 
+  // ดึงกล่อง "สรุปค่าบริการ" บนหน้าตั๋ว — แยกประเภท + จำนวน + ราคา + ยอดรวม (กันไกด์โกงหัวคน/รถ)
+  // โครง: h3"สรุปค่าบริการ" → กล่อง .bg-white → หัวกลุ่ม(ผู้เดินทาง/พาหนะ) + .ml-6 รายการย่อย + h2"ค่าบริการทั้งหมด"
+  function getOrder(doc) {
+    const head = [...doc.querySelectorAll("h3")].find((h) => txt(h) === "สรุปค่าบริการ");
+    const box = head && head.closest(".mt-4") && head.closest(".mt-4").querySelector(".bg-white");
+    if (!box) return null;
+
+    const order = { groups: [], discount: "", total: "" };
+    let cur = null;
+    for (const el of box.children) {
+      const ps = el.querySelectorAll(":scope > p");
+      // หัวกลุ่ม เช่น <p>ผู้เดินทาง</p><p>2 คน</p>
+      if (el.matches(".flex.justify-between") && ps.length === 2 && /คน|คัน/.test(txt(ps[1]))) {
+        cur = { label: txt(ps[0]), count: txt(ps[1]), items: [] };
+        order.groups.push(cur);
+        continue;
+      }
+      // รายการย่อยในกลุ่ม: ชื่อ(p.w-52) + จำนวน(span เช่น x2) + ราคา(p ลูกตรงของแถว)
+      if (el.classList.contains("ml-6") && cur) {
+        el.querySelectorAll(".flex.justify-between").forEach((row) => {
+          const name = txt(row.querySelector("p.w-52")) || txt(row.querySelector(".items-center p"));
+          const qty = txt(row.querySelector("span"));
+          const priceEl = [...row.children].find((c) => c.tagName === "P");
+          if (name) cur.items.push({ name, qty, price: txt(priceEl) });
+        });
+        continue;
+      }
+      const t = txt(el);
+      if (/ส่วนลดค่าบริการ/.test(t)) {
+        const h = el.querySelectorAll("h4");
+        if (h.length >= 2) order.discount = txt(h[1]);
+      } else if (/ค่าบริการทั้งหมด/.test(t)) {
+        const h = el.querySelectorAll("h2");
+        if (h.length >= 2) order.total = txt(h[1]);
+      }
+    }
+    return order.groups.length ? order : null;
+  }
+
   function collect(doc, loc) {
     return {
       ticketNo: getTicketNo(loc),
       summary: getSummary(doc),
+      order: getOrder(doc),
       blocks: getQRBlocks(doc),
     };
   }
@@ -83,6 +123,27 @@
     ]
       .filter(Boolean)
       .join("  •  ");
+
+    // ตารางรายการสั่งซื้อ (จากกล่องสรุปค่าบริการของ DNP) — ให้ไกด์/นทท.ตรวจหัวคนที่จองมาครบไหม
+    // โชว์รายการล้วน (ไม่แยกหัวกลุ่ม ผู้เดินทาง/พาหนะ) + ยอดรวม. ถ้า scrape ไม่ได้ → fallback บรรทัดสรุปเดิม
+    const order = data.order;
+    const orderItems = order ? order.groups.flatMap((g) => g.items) : [];
+    const orderBlock = order
+      ? `<hr class="solid">
+  <div class="osec">
+    <div class="onote">สรุปค่าบริการ</div>
+    ${orderItems
+      .map(
+        (it) =>
+          `<div class="orow oitem"><span class="oname">${esc(it.name)}</span><span class="oqty">${esc(it.qty)}</span><span class="oprice">${esc(it.price.replace(/\s*บาท\s*/, ""))}</span></div>`
+      )
+      .join("\n    ")}
+    ${order.discount && !/^0\s*บาท$/.test(order.discount) ? `<div class="orow"><span>ส่วนลด</span><span>${esc(order.discount)}</span></div>` : ""}
+    <div class="orow ototal"><span>รวมทั้งหมด</span><span>${esc(order.total || "")}</span></div>
+  </div>`
+      : summaryLine
+      ? `<div class="meta">${summaryLine}</div>`
+      : "";
 
     const points = data.blocks
       .map(
@@ -126,16 +187,24 @@
   .qr { width: ${P.qr}; height: ${P.qr}; display: block; margin: 0 auto; image-rendering: pixelated; }
   .ptime { font-size: ${P.ptime}px; font-weight: 700; margin-top: 1mm; }
   .foot { font-size: ${P.foot}px; font-weight: 400; text-align: center; margin-top: 2mm; }
+  .osec { font-size: ${P.meta}px; }
+  .onote { font-size: ${P.ptitle}px; font-weight: 700; margin-bottom: 1.2mm; }
+  .orow { display: flex; justify-content: space-between; align-items: baseline; margin: 0.5mm 0; }
+  .oitem { padding-left: 1mm; }
+  .oitem .oname { flex: 1; padding-right: 1mm; }
+  .oitem .oqty { width: 8mm; text-align: right; font-weight: 700; }
+  .oitem .oprice { width: 13mm; text-align: right; }
+  .ototal { font-weight: 700; font-size: ${P.ptitle}px; margin-top: 1mm; border-top: 1px solid #000; padding-top: 0.8mm; }
 </style></head>
 <body>
   <div class="park">${esc(park)}</div>
   <div class="sub">บัตรเข้าอุทยาน • e-Ticket</div>
   ${headLine ? `<div class="meta">${headLine}</div>` : ""}
-  ${summaryLine ? `<div class="meta">${summaryLine}</div>` : ""}
+  ${orderBlock}
   <hr class="solid">
   ${points || '<div style="text-align:center">ไม่พบ QR ในหน้านี้</div>'}
   <hr class="solid">
-  <div class="foot">โปรดแสดง QR ต่อเจ้าหน้าที่ด่านตรวจ</div>
+  <div class="foot">โปรดตรวจสอบความถูกต้อง และแสดง QR ต่อเจ้าหน้าที่ด่านตรวจ</div>
   <div class="foot">พิมพ์ ${nowStamp()}</div>
 </body></html>`;
   }
