@@ -36,6 +36,9 @@ git push
 # clone ไปเครื่องใหม่
 git clone https://github.com/vwin2537-arch/E-ticket-automation.git
 ```
+**อัพเดทเครื่องด่าน = `4-UPDATE-Windows.bat`** (เลิกใช้ zip): ปุ่มเดียว ตรวจเองว่าครั้งแรก (git init+remote+`reset --hard origin/main`)
+หรืออัพเดทปกติ (`git pull`) + `npm install` เฉพาะตอน package เปลี่ยน. logs/auth ถูก gitignore → ไม่ถูกแตะ log ต่อเนื่อง
+ครั้งแรกสุดต้องลง Git for Windows + วางไฟล์ปุ่มนี้ลงโฟลเดอร์ด่านครั้งเดียว (ปุ่มเช็ค git ให้ + บอกลิงก์ลงถ้าไม่มี)
 ⚠️ `.gitignore` exclude: `auth/storageState.json`, `src/log-upload.local.js`, `node_modules/`, `logs/usage.csv`, `dnp-eticket-windows.zip`
 — **ก๊อปไปเครื่องด่านด้วย 2 ไฟล์: `auth/storageState.json` (session) + `src/log-upload.local.js` (url/secret ส่ง log→Drive)** — ทั้งคู่ gitignore (อย่า push ขึ้น GitHub public)
 ⚠️ **server cache โค้ด:** automation.js ถูก `require` ตอน start — แก้โค้ดแล้วต้อง `npm run restart` เสมอ
