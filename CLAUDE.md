@@ -17,8 +17,9 @@ npm start       # เปิดหน้ากาก + อุ่น warm pool (�
 npm run restart # แก้โค้ดแล้วเปิดใหม่ — ฆ่าตัวเก่าที่ถือ port ก่อน (อย่าใช้ start ซ้ำ เดี๋ยว port ชนตายเงียบ)
 npm stop        # ปิดระบบ — ปิด server + เก็บ Chrome (ms-playwright) ที่หลุด orphan ทั้งหมด (Mac เท่านั้น ใช้ lsof)
 ```
-**ปิดปกติ:** กลับไปหน้าต่างที่รัน `npm start` แล้วกด `Ctrl+C` (server ปิด browser ให้เองผ่าน graceful shutdown)
-**ถ้าเผลอปิดหน้าต่าง/ค้าง:** `npm stop` กวาดเก็บ orphan ที่ Ctrl+C เก็บไม่ทัน
+**ปิดปกติ (dev/Mac):** กด `Ctrl+C` ที่หน้าต่าง `npm start` / **ถ้าเผลอปิดหน้าต่าง/ค้าง:** `npm stop` กวาด orphan
+**ปิดที่เครื่องด่าน (จนท.):** กดปุ่ม **"⏻ ปิดการทำงาน"** ในหน้ากาก → `POST /api/shutdown` ส่ง log+เก็บ browser+`exit 0` (หน้าต่างปิดเอง). มีใบ pending ค้าง = บล็อก ไม่ปิด
+**เผลอปิดหน้าต่างดำ (Chrome บอทค้าง):** ดับเบิลคลิก **`RESET-Windows.bat`** → kill server+กวาด playwright chrome+ส่ง log+เปิดใหม่ (Mac เทส: `กู้ระบบเอราวัณ.command`)
 
 ## GitHub
 **Repo:** https://github.com/vwin2537-arch/E-ticket-automation
@@ -35,15 +36,15 @@ git push
 # clone ไปเครื่องใหม่
 git clone https://github.com/vwin2537-arch/E-ticket-automation.git
 ```
-⚠️ `.gitignore` exclude: `auth/storageState.json`, `node_modules/`, `logs/usage.csv`, `dnp-eticket-windows.zip`
-— ก๊อป session ไปเครื่องอื่นด้วย `auth/storageState.json` เท่านั้น (อย่า push ขึ้น GitHub)
+⚠️ `.gitignore` exclude: `auth/storageState.json`, `src/log-upload.local.js`, `node_modules/`, `logs/usage.csv`, `dnp-eticket-windows.zip`
+— **ก๊อปไปเครื่องด่านด้วย 2 ไฟล์: `auth/storageState.json` (session) + `src/log-upload.local.js` (url/secret ส่ง log→Drive)** — ทั้งคู่ gitignore (อย่า push ขึ้น GitHub public)
 ⚠️ **server cache โค้ด:** automation.js ถูก `require` ตอน start — แก้โค้ดแล้วต้อง `npm run restart` เสมอ
 ไม่งั้นยังรันโค้ดเก่า (เคยทำให้เจอบัค "ไม่มียานพาหนะ" — ดู PROGRESS)
 กรอกในหน้ากาก → กดยืนยัน → หน้ากากขึ้น popup spinner, เบราว์เซอร์กรอกแบบ**ซ่อนนอกจอ** →
 พอถึงหน้าสรุป เบราว์เซอร์**เด้งกลับเข้าจอ**ให้พี่วินตรวจ+จ่ายเอง
 
 ## โครงไฟล์
-- `src/config.js` — ตัวเลือกฟอร์ม (เวลา/ยานพาหนะ/ประเภทผู้เดินทาง + ราคา) + `POOL_SIZE` ← แก้ตรงนี้ถ้าระบบเปลี่ยน
+- `src/config.js` — ตัวเลือกฟอร์ม (เวลา/ยานพาหนะ/ประเภทผู้เดินทาง + ราคา) + `POOL_SIZE` + `LOG_UPLOAD`(url/secret ส่ง log → Drive) ← แก้ตรงนี้ถ้าระบบเปลี่ยน
   มี field `en` ทุกประเภท (ยานพาหนะ/ผู้เดินทาง) ไว้โชว์ใน console เป็นอังกฤษ — เพิ่มประเภทใหม่อย่าลืมใส่ `en`
 - `src/automation.js` — `warmTab()` (Phase A: เปิด→การ์ด→เลือกวัน + `readTimeSlots()` อ่านรอบจริง) + `fillBooking()`
   (Phase B: เวลา/รถ/คน→สรุป; `selectOption` ฟ้องถ้ารอบ `is-disabled`) + `runBooking()` (warm+fill รวม cold path/เทส)
@@ -52,9 +53,15 @@ git clone https://github.com/vwin2537-arch/E-ticket-automation.git
   (วันนี้ปิดทุกรอบ → เด้งพรุ่งนี้เอง) + `slots` รอบเวลาจริงจาก DNP — ทั้งคู่ส่งผ่าน `status()`. acquire ทิ้งแท็บไม่ตรง targetDate
 - `src/datepicker.js` — เลือกวันใน Element UI date picker
 - `src/names.js` — generate ชื่อมั่วๆ (ระบบไม่เช็กชื่อจริง)
-- `src/server.js` — Express + API `/api/config`, `/api/book`, `/api/login-status`, `/api/pool-status` (สถานะ warm: ready/warming/size/today)
+- `src/server.js` — Express + API `/api/config`, `/api/book`, `/api/login-status`, `/api/pool-status` (สถานะ warm: ready/warming/size/today), `/api/shutdown` (ปุ่มปิด: ส่ง log→shutdown→exit 0; บล็อกถ้ามี pending)
   + `pendingTabs[]` คิวใบจริงดักรอจ่าย (#5) + `prunePending()` เอาใบที่ จนท.ปิดหน้าต่างแล้วออกจากคิว
   + `shutdown()` จับ SIGINT/SIGTERM ปิด browser ทั้งหมด (pool+pendingTabs+lastDryTab) ก่อนตาย กัน chromium orphan
+- `src/filelog.js` — `install()` ดักทุก `console.log/error` + `uncaughtException/unhandledRejection` เขียนลง `logs/server.log`
+  (เดิม console หายกับหน้าต่างดำ ติดตามบัคไม่ได้). เรียกบรรทัดแรกสุดของ server.js (ก่อน log แรก). crash → log แล้ว `exit(1)` (.bat เห็น+ค้างจอ)
+- `scripts/upload-logs.js` — `uploadLogs()` อ่าน `usage.csv`+`server.log` POST ไป Apps Script. best-effort 10วิ
+  แยกโฟลเดอร์ตามชื่อเครื่อง (os.hostname) รองรับหลายด่าน. เรียกจาก `/api/shutdown` + `RESET-Windows.bat` (CLI). ⚠️ ไม่ส่ง `server-live.log` เดิม (ขยะ)
+- `src/log-upload.local.js` — **url+secret ส่ง log (gitignore, repo public ห้ามหลุด)** — config.js `require` override ถ้ามี. ก๊อปไปเครื่องด่านด้วย
+- `apps-script/Code.gs` + `README-deploy.md` — Apps Script web app รับ log เขียนลง Drive (พี่วิน deploy เอง ตั้ง FOLDER_ID+SECRET → URL ใส่ `config.js`)
 - `src/logger.js` — เขียน log การใช้งานลง `logs/usage.csv` (logUsage) — เรียกจาก server.js ทุกครั้งที่จอง
   คอลัมน์ท้าย: `คนไทย`/`ต่างชาติ`/`รายละเอียดผู้เดินทาง`. `ensureHeader()` อัพเดท header ไฟล์เดิมเมื่อเพิ่ม column (ไม่ลบแถวเก่า)
   ⚠️ ส่ง zip ไป Windows **ห้ามใส่ logs/usage.csv** (ทับ log จริงของเครื่องด่าน) — header เก่าจะอัพเกรดเองตอนจองครั้งหน้า

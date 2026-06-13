@@ -1,6 +1,20 @@
 # PROGRESS.md — DNP E-Ticket Auto-fill
 
-## สถานะ: 🟢 ใช้งานได้ + รอบเวลา data-driven (เลิกเดา buffer) — อัพเดทล่าสุด 12/6/69
+## สถานะ: 🟢 ใช้งานได้ + ปุ่มปิด/กู้ระบบ + ส่ง log ขึ้น Drive — อัพเดทล่าสุด 13/6/69
+
+### 🆕 (13/6/69) ปุ่มปิดการทำงาน + กู้ระบบ + ส่ง log ขึ้น Drive อัตโนมัติ
+**โจทย์:** จนท. งงแล้วเผลอปิดหน้าต่างดำ (command line) → server ตาย Chrome บอทค้างเต็มจอ ระบบเออเรอ + พี่วินอยากดูบัคทางไกล
+- **เคส A (หน้าต่างยังเปิด): ปุ่ม "ปิดการทำงาน" บนหน้ากาก** → confirm modal → `POST /api/shutdown` →
+  ส่ง log ขึ้น Drive → เก็บ browser (`shutdown()` เดิม) → `process.exit(0)`. แก้ `2-START.bat` เป็น `if errorlevel 1 pause`
+  (exit 0 = ปิดปกติ → หน้าต่างปิดเอง / crash = ค้างให้เห็น error) — แทน Ctrl+C. มีใบ pending ค้าง = บล็อก ไม่ปิด (กันเงินหาย)
+- **เคส B (เผลอปิดหน้าต่าง Chrome ค้าง): `RESET-Windows.bat`** ดับเบิลคลิกเดียว → kill server เก่า(port) +
+  กวาด Chrome **เฉพาะ playwright** (PowerShell filter `ms-playwright` ไม่แตะ Chrome ปกติ) + ส่ง log + เปิดระบบใหม่ (+ `กู้ระบบเอราวัณ.command` ไว้เทส Mac)
+- **ส่ง log → Google Drive (Apps Script):** `src/filelog.js` ดักทุก console+crash เขียน `logs/server.log` อัตโนมัติ
+  (เดิม console หายกับหน้าต่างดำ) → `scripts/upload-logs.js` POST `usage.csv`+`server.log` ไป Apps Script web app
+  (best-effort 10วิ, แยกโฟลเดอร์ตามชื่อเครื่อง รองรับหลายด่าน). **ไม่ส่ง `server-live.log` เดิม** (ขยะ ไม่เคยถูกเขียนอัตโนมัติ)
+- **🔐 url+secret แยกไป `src/log-upload.local.js` (gitignore)** — repo เป็น public ห้ามให้ secret หลุด; config.js `require` override ถ้ามี. ก๊อปไปเครื่องด่านด้วย (เหมือน auth/)
+- ✅ **เทสครบ:** filelog เขียนไฟล์, `/api/shutdown` → ok → exit 0, deploy Apps Script + upload จริง `200` → **verify ผ่าน MCP เห็นไฟล์ขึ้น Drive จริง** (โฟลเดอร์ Erawan-Logs แยกตามชื่อเครื่อง)
+- ⏳ **รอ:** เทส `.bat` บน Windows ด่านจริง (taskkill/PowerShell กวาด playwright + หน้าต่างปิดเองตอนกดปิด) + ก๊อป `log-upload.local.js` ไปเครื่องด่าน
 
 ### 🆕 (12/6/69) ใบเสร็จเพิ่มตารางสรุปค่าบริการ (กันไกด์โกงหัว) — sync จาก dnp-eticket-receipt
 `receipt-core.js` (สำเนาใน `src/receipt-inject/`) เพิ่ม `getOrder()` scrape กล่อง "สรุปค่าบริการ" บนหน้าตั๋ว →
@@ -69,8 +83,9 @@ commit `d0270d8` push แล้ว + อัพ zip Windows. ⏳ รอเทส 
   → **start server ด้วย path เต็ม `node /abs/.../src/server.js`** (cwd-independent) + ยืนยันโค้ดใหม่รันจริงด้วย log ก่อนสรุป
 
 ## รอทำ / รอตัดสินใจ ⏳
+- **deploy Apps Script ส่ง log → Drive**: ทำตาม `apps-script/README-deploy.md` (5 นาที) → URL ใส่ `config.js` LOG_UPLOAD
 - **ทดสอบ end-to-end จริง**: กด "ต่อไป" ดูหน้าสรุปว่าหยุดถูกที่ + ยังไม่จ่าย (รอพี่วินโอเค เป็นระบบจริงหน่วยงาน)
-- **เทส Windows จริงที่ด่าน**: #2 graceful shutdown, pipeline ดักหลายใบ, รอบเวลา data-driven, ซ่อนหน้าต่างสนิท
+- **เทส Windows จริงที่ด่าน**: #2 graceful shutdown, pipeline ดักหลายใบ, รอบเวลา data-driven, ซ่อนหน้าต่างสนิท + **ปุ่มปิด/RESET.bat ใหม่** (กวาด playwright ไม่โดน Chrome ปกติ, หน้าต่างปิดเองตอนกดปิด)
 - สัญชาติต่างชาติ default = "American" — แก้ที่ `config.js` ถ้าพี่วินอยากได้สัญชาติอื่น
 
 ## Lesson learned 💡 (เก่ากว่านี้ดู [PROGRESS_ARCHIVE.md](PROGRESS_ARCHIVE.md))

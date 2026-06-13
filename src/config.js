@@ -17,6 +17,13 @@ const POOL_SIZE = 3;
 // ครบเพดานแล้วกดจองอีก = เตือน (ไม่ปิดอัตโนมัติ กันปิดใบที่ยังจ่ายไม่เสร็จ เงินหาย)
 const MAX_PENDING = 3;
 
+// ส่ง log ขึ้น Google Drive ผ่าน Apps Script web app (ดูวิธี deploy ที่ apps-script/README-deploy.md)
+// ส่งตอน: กดปุ่ม "ปิดการทำงาน" ในหน้ากาก + ดับเบิลคลิก RESET-Windows.bat
+// ⚠️ url+secret จริงอยู่ใน src/log-upload.local.js (gitignore — repo public ห้ามให้หลุด)
+//    ก๊อปไฟล์นั้นไปเครื่องด่านด้วย (เหมือน auth/). ไม่มีไฟล์ = url ว่าง → ข้ามส่ง log (ระบบรันปกติ)
+let LOG_UPLOAD = { url: '', secret: '' };
+try { Object.assign(LOG_UPLOAD, require('./log-upload.local')); } catch {}
+
 // ช่วงเวลา
 const TIME_SLOTS = ['08:00 - 11:45', '11:45 - 15:30'];
 
@@ -54,4 +61,4 @@ const TRAVELER_TYPES = [
   { id: 'thai_elder',   match: 'ผู้สูงอายุ ชาวไทย',       label: 'ผู้สูงอายุไทย (60+)', price: 0, nationality: 'Thai',    featured: false, en: 'Elder (Thai)' },
 ];
 
-module.exports = { PARK, POOL_SIZE, MAX_PENDING, TIME_SLOTS, SLOT_CLOSE_BUFFER_MIN, VEHICLE_TYPES, TRAVELER_TYPES };
+module.exports = { PARK, POOL_SIZE, MAX_PENDING, TIME_SLOTS, SLOT_CLOSE_BUFFER_MIN, VEHICLE_TYPES, TRAVELER_TYPES, LOG_UPLOAD };

@@ -1,9 +1,11 @@
 // server.js — หน้ากาก web app + API สั่ง automation
+require('./filelog').install(); // ดักทุก console + crash เขียนลง logs/server.log (ก่อน log แรก)
 const express = require('express');
 const path = require('path');
 const { fillBooking, checkLogin, setReceiptWidth } = require('./automation');
 const pool = require('./pool');
 const { logUsage } = require('./logger');
+const { uploadLogs } = require('../scripts/upload-logs');
 const { PARK, POOL_SIZE, MAX_PENDING, TIME_SLOTS, SLOT_CLOSE_BUFFER_MIN, VEHICLE_TYPES, TRAVELER_TYPES } = require('./config');
 
 const app = express();
@@ -46,6 +48,21 @@ app.get('/api/login-status', async (req, res) => {
 app.get('/api/pool-status', (req, res) => {
   prunePending();
   res.json({ ...pool.status(), size: POOL_SIZE, pending: pendingTabs.length, maxPending: MAX_PENDING });
+});
+
+// ปิดระบบจากปุ่มบนหน้ากาก (เคส A: หน้าต่างดำยังเปิด) — แทนการกด Ctrl+C เอง
+// ⚠️ มีใบจริงค้างรอจ่ายอยู่ = ห้ามปิด (เงินยังไม่จ่าย ปิดแล้วใบหาย) → ตอบ blocked ให้หน้ากากเตือน
+// ลำดับ: ตอบ res ก่อน → ส่ง log ขึ้น Drive → shutdown() เก็บ browser → process.exit(0)
+//        (exit 0 = ปิดปกติ → 2-START.bat ไม่ pause → หน้าต่างดำปิดเอง)
+app.post('/api/shutdown', async (req, res) => {
+  prunePending();
+  if (pendingTabs.length > 0) {
+    return res.json({ ok: false, error: `ยังมีใบรอจ่ายค้างอยู่ ${pendingTabs.length} ใบ — จ่ายเงิน/ปิดหน้าต่างใบนั้นให้เสร็จก่อนปิดระบบนะคะ (กันใบหาย เงินหาย)` });
+  }
+  res.json({ ok: true, message: 'กำลังปิดระบบ... ปิดแท็บนี้ได้เลยค่ะ' });
+  console.log('Shutdown requested from web UI');
+  await uploadLogs().catch(() => {}); // best-effort ส่ง log ก่อนตาย
+  shutdown('WEB-SHUTDOWN');
 });
 
 // กันงานค้างล็อกทั้งระบบ: ถ้า fillBooking ค้าง (DNP ไม่ตอบ) ครอบด้วย timeout

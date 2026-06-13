@@ -15,7 +15,9 @@ for /f "tokens=5" %%a in ('netstat -ano ^| findstr :5179 ^| findstr LISTENING') 
 REM --- Wait 3s for server, then open the browser to the form ---
 start "" /b cmd /c "timeout /t 3 >nul & start http://localhost:5179"
 
-REM --- Start the server (stays running until this window is closed) ---
+REM --- Start the server (stays running until closed via the web button or this window) ---
 node src\server.js
 
-pause
+REM exit 0 = closed normally via the web "Shut down" button -> this window closes itself
+REM exit >=1 = crashed -> keep window open so the error stays visible
+if errorlevel 1 pause

@@ -1,6 +1,7 @@
 node_modules/
 auth/storageState.json
 auth/shot-*.png
+src/log-upload.local.js
 logs/usage.csv
 logs/*.log
 dnp-eticket-windows.zip

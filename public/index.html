@@ -99,6 +99,22 @@
   #paperChip { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; margin-bottom: 10px;
                font-size: 12px; color: #557; background: #eef1f4; border-radius: 99px; padding: 4px 11px; }
   #paperChip:hover { background: #e3ece7; }
+  /* โซนปิดการทำงาน — แยกจากปุ่มจองชัดเจน กันกดผิด (มี confirm ซ้อนอีกชั้น) */
+  .endzone { margin-top: 26px; border-top: 1px dashed #d4ddd8; padding-top: 16px; }
+  .shutdown { width: 100%; background: #fff; color: #c0392b; border: 1px solid #e6b8b3;
+              padding: 12px; border-radius: 11px; font-size: 14px; font-weight: 600; cursor: pointer; }
+  .shutdown:hover { background: #fbe6e6; }
+  /* confirm modal ปิดระบบ — ใช้สไตล์เดียวกับ #paperModal */
+  #confirmModal { position: fixed; inset: 0; background: rgba(0,0,0,.45);
+                  display: none; align-items: center; justify-content: center; z-index: 1001; }
+  #confirmModal.show { display: flex; }
+  #confirmModal .pcard { background: #fff; border-radius: 18px; padding: 28px 30px; text-align: center;
+                         box-shadow: 0 12px 44px rgba(0,0,0,.3); max-width: 340px; }
+  #confirmModal h3 { margin: 0 0 6px; font-size: 18px; color: #c0392b; }
+  #confirmModal .desc { margin: 0 0 20px; font-size: 13px; color: #778; line-height: 1.5; }
+  #confirmModal .pbtns { display: flex; gap: 12px; justify-content: center; }
+  #confirmModal .pbtns button { flex: 1; padding: 14px 0; border: 2px solid; background: #fff;
+                                border-radius: 12px; font-size: 16px; font-weight: 700; cursor: pointer; }
 </style>
 </head>
 <body>
@@ -109,6 +125,16 @@
     <div class="pbtns">
       <button data-w="57">57 มม.<small>เครื่องเล็ก</small></button>
       <button data-w="80">80 มม.<small>เครื่องใหญ่</small></button>
+    </div>
+  </div>
+</div>
+<div id="confirmModal">
+  <div class="pcard">
+    <h3>⏻ ปิดระบบจองเอราวัณ?</h3>
+    <p class="desc">ระบบจะเก็บเบราว์เซอร์ที่เปิดอยู่ให้เรียบร้อย ส่ง log ให้หัวหน้า แล้วปิดตัวเอง<br>เปิดใหม่ได้ตลอดด้วยไอคอนบนหน้าจอ</p>
+    <div class="pbtns">
+      <button id="confirmCancel" style="border-color:#9bb3a8;color:#667">ยกเลิก</button>
+      <button id="confirmShutdown" style="border-color:#c0392b;color:#c0392b">ปิดเลย</button>
     </div>
   </div>
 </div>
@@ -164,6 +190,11 @@
     <button class="go" id="go">✓ ยืนยัน — ให้มุกกรอกให้</button>
     <button class="clear" id="clear" type="button">🧹 ล้างฟอร์ม — เริ่มใบใหม่ <span style="opacity:.6">(Esc)</span></button>
     <div id="msg"></div>
+
+    <div class="endzone">
+      <button class="shutdown" id="shutdown" type="button">⏻ ปิดการทำงาน — เลิกใช้วันนี้</button>
+      <div class="hint" style="text-align:center;margin-top:6px">กดปุ่มนี้แทนการปิดหน้าต่างดำ — ระบบจะเก็บงานให้เรียบร้อยแล้วปิดเอง</div>
+    </div>
   </div>
 </div>
 
@@ -492,6 +523,31 @@ async function setPaper(width) {
 document.querySelectorAll('#paperModal .pbtns button').forEach((b) => (b.onclick = () => setPaper(Number(b.dataset.w))));
 $('paperChip').onclick = () => $('paperModal').classList.add('show');
 initPaperSize();
+
+// ===== ปิดการทำงาน (เคส A: หน้าต่างดำยังเปิด) — แทนการกด Ctrl+C / ปิดหน้าต่างเอง =====
+function showShutdownDone() {
+  document.body.innerHTML =
+    '<div style="max-width:620px;margin:90px auto;text-align:center;color:#2e8b57;' +
+    'font-family:-apple-system,\'Sukhumvit Set\',sans-serif">' +
+    '<div style="font-size:56px">✅</div>' +
+    '<h2 style="margin:10px 0 6px">ปิดระบบเรียบร้อยแล้วค่ะ</h2>' +
+    '<p style="color:#778;font-size:14px">ปิดแท็บนี้ได้เลย — เปิดใหม่เมื่อไหร่ก็ดับเบิลคลิกไอคอนบนหน้าจอ</p></div>';
+}
+$('shutdown').onclick = () => $('confirmModal').classList.add('show');
+$('confirmCancel').onclick = () => $('confirmModal').classList.remove('show');
+$('confirmShutdown').onclick = async () => {
+  $('confirmModal').classList.remove('show');
+  const msg = $('msg');
+  msg.className = 'ok'; msg.textContent = '⏳ กำลังปิดระบบ ส่ง log แล้วเก็บเบราว์เซอร์...';
+  try {
+    const d = await (await fetch('/api/shutdown', { method: 'POST' })).json();
+    if (d.ok) showShutdownDone();
+    else { msg.className = 'err'; msg.textContent = '❌ ' + d.error; } // มีใบค้างรอจ่าย = ไม่ปิด
+  } catch (e) {
+    // fetch ล้ม = server ปิดไปแล้ว (connection หาย) → ถือว่าปิดสำเร็จ
+    showShutdownDone();
+  }
+};
 
 init();
 </script>

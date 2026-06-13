@@ -162,9 +162,12 @@
 
     // ขนาดกระดาษ: อ่านจาก window.__DNP_RECEIPT_WIDTH (autofill ฉีดตามที่เลือกตอนเปิดระบบ) — default 80mm
     const W = (typeof window !== "undefined" && Number(window.__DNP_RECEIPT_WIDTH)) || 80;
+    // pad บน57mm ไม่สมมาตร (ซ้ายน้อย/ขวาเยอะ) — หัวพิมพ์ thermal 57mm พิมพ์จริง ~48mm ชิดซ้าย
+    // จึงดันเนื้อหาให้อยู่กลางพื้นที่พิมพ์จริง ไม่ใช่กลางแผ่นกระดาษ ไม่งั้นคอลัมน์ราคา(ขวาสุด)ตกขอบ
+    // oqty พอดี "x99", oprice พอดี "9,999"
     const P = W === 57
-      ? { page: "57mm", pad: "2mm 3mm 4mm", base: 13, park: 16, sub: 11, meta: 12, ptitle: 14, qr: "38mm", ptime: 12, foot: 10 }
-      : { page: "80mm", pad: "3mm 4mm 5mm", base: 16, park: 20, sub: 13, meta: 14, ptitle: 17, qr: "42mm", ptime: 14, foot: 12 };
+      ? { page: "57mm", pad: "2mm 12mm 4mm 3mm", base: 13, park: 16, sub: 11, meta: 12, ptitle: 14, qr: "38mm", ptime: 12, foot: 10, oqty: "7mm", oprice: "12mm" }
+      : { page: "80mm", pad: "3mm 6mm 5mm", base: 16, park: 20, sub: 13, meta: 14, ptitle: 17, qr: "42mm", ptime: 14, foot: 12, oqty: "8mm", oprice: "13mm" };
     return `<!DOCTYPE html><html lang="th"><head><meta charset="utf-8">
 <style>
   /* กระดาษ ${P.page} (thermal) — Tahoma ฟอนต์หลัก เส้นหนากว่า Sarabun พิมพ์ติดคมบน 180dpi
@@ -191,9 +194,9 @@
   .onote { font-size: ${P.ptitle}px; font-weight: 700; margin-bottom: 1.2mm; }
   .orow { display: flex; justify-content: space-between; align-items: baseline; margin: 0.5mm 0; }
   .oitem { padding-left: 1mm; }
-  .oitem .oname { flex: 1; padding-right: 1mm; }
-  .oitem .oqty { width: 8mm; text-align: right; font-weight: 700; }
-  .oitem .oprice { width: 13mm; text-align: right; }
+  .oitem .oname { flex: 1; min-width: 0; padding-right: 1mm; overflow-wrap: anywhere; }
+  .oitem .oqty { width: ${P.oqty}; text-align: right; font-weight: 700; }
+  .oitem .oprice { width: ${P.oprice}; text-align: right; }
   .ototal { font-weight: 700; font-size: ${P.ptitle}px; margin-top: 1mm; border-top: 1px solid #000; padding-top: 0.8mm; }
 </style></head>
 <body>
