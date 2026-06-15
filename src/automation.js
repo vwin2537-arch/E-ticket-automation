@@ -2,7 +2,7 @@
 const { chromium } = require('playwright');
 const fs = require('fs');
 const path = require('path');
-const { PARK, VEHICLE_TYPES, TRAVELER_TYPES, TIME_SLOTS, SLOT_CLOSE_BUFFER_MIN } = require('./config');
+const { PARK, VEHICLE_TYPES, TRAVELER_TYPES } = require('./config');
 const { pickDate } = require('./datepicker');
 const { thaiNames, interNames } = require('./names');
 
@@ -150,19 +150,11 @@ function todayISO() {
   return d.toISOString().slice(0, 10);
 }
 
-// วันเป้าหมายที่ควรจอง/อุ่น pool — ฉลาดตามเวลา:
-//  - ก่อน cutoff (เวลาสิ้นสุดรอบสุดท้าย − buffer = 15:20) → "วันนี้"
-//  - เลย cutoff (วันนี้ปิดรับแล้ว) → "พรุ่งนี้" (นทท.ช่วง 15:20–เที่ยงคืน จองของพรุ่งนี้)
-//  - เลยเที่ยงคืน วันใหม่เริ่ม → กลับมาเป็น "วันนี้" อัตโนมัติ
+// วันเป้าหมายที่ควรจอง/อุ่น pool = "วันนี้" เสมอ — นทท.ที่ด่านคือ walk-in เข้าวันนี้
+// (เลิกเด้งพรุ่งนี้อัตโนมัติหลัง cutoff — เคยทำให้ นทท.จ่ายเงินผิดวันโดยไม่ตั้งใจ)
+// ถ้าวันนี้ DNP ปิดทุกรอบ หน้ากากจะให้ จนท.กดยืนยัน "จองล่วงหน้าพรุ่งนี้" เอง
 function bookDate() {
-  const last = TIME_SLOTS[TIME_SLOTS.length - 1];           // รอบสุดท้าย เช่น '11:45 - 15:30'
-  const [h, m] = last.split('-').pop().trim().split(':').map(Number);
-  const cutoffMin = h * 60 + m - SLOT_CLOSE_BUFFER_MIN;     // 15:30 − 10 = 15:20
-  const now = new Date();
-  const d = new Date();
-  if (now.getHours() * 60 + now.getMinutes() >= cutoffMin) d.setDate(d.getDate() + 1);
-  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
-  return d.toISOString().slice(0, 10);
+  return todayISO();
 }
 
 // เปิด chromium + flags กัน throttle, Windows ดันนอกจอ (ซ่อนสนิท) — ดู note บน tuckWindow

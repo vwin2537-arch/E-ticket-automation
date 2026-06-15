@@ -168,6 +168,10 @@
         <select id="time"></select>
       </div>
     </div>
+    <div id="todayClosed" style="display:none;margin:10px 0;padding:12px 14px;border:2px solid #c0392b;background:#fdecea;border-radius:10px;color:#922;font-size:15px">
+      ⚠️ <b>วันนี้หมดเวลาจองแล้ว</b> — DNP ปิดรับของวันนี้ทุกรอบ จองวันนี้ไม่ได้แล้วค่ะ<br>
+      <button type="button" id="bookTomorrow" style="margin-top:8px;padding:8px 14px;border:1px solid #c0392b;background:#fff;color:#c0392b;border-radius:8px;cursor:pointer;font-size:14px">📅 จองล่วงหน้าพรุ่งนี้ →</button>
+    </div>
     <div class="sec">
       <h2>🚗 ยานพาหนะ (เพิ่มคันได้)</h2>
       <div id="vehicles"></div>
@@ -204,22 +208,13 @@ const $ = (id) => document.getElementById(id);
 const fmt = (n) => n.toLocaleString('th-TH');
 // วันที่แบบ YYYY-MM-DD ตามเวลาท้องถิ่น (ไม่ใช่ UTC — กันวันเพี้ยนช่วงเช้ามืด)
 const localISO = (d) => { const x = new Date(d); x.setMinutes(x.getMinutes() - x.getTimezoneOffset()); return x.toISOString().slice(0, 10); };
-// นาทีของเวลา "สิ้นสุด" ในรอบ เช่น '08:00 - 11:45' → 11*60+45
-const slotEndMin = (slot) => { const [h, m] = slot.split('-').pop().trim().split(':').map(Number); return h * 60 + m; };
-// ปิดรอบในหน้ากากก่อนเวลาสิ้นสุดจริง N นาที — DNP ตัดรอบ/เอา option ออกก่อน 11:45 เป๊ะ ทำให้กรอกไม่ได้
-// ดึงค่าจริงจาก /api/config (single source ที่ config.js) ตอน init — ตัวเลขนี้เป็น fallback เผื่อโหลดไม่ทัน
-let SLOT_CLOSE_BUFFER_MIN = 10;
-// วันเป้าหมายที่ระบบ warm ไว้ (ต้องตรงกับ backend bookDate): ก่อน cutoff(รอบสุดท้าย−buffer)=วันนี้ / เลย=พรุ่งนี้
+// วันเป้าหมายที่ระบบ warm ไว้ = "วันนี้" เสมอ (ตรงกับ backend bookDate — ไม่เด้งพรุ่งนี้อัตโนมัติ)
 function bookDateLocal() {
-  const lastEnd = slotEndMin(CFG.timeSlots[CFG.timeSlots.length - 1]);
-  const now = new Date(), d = new Date();
-  if (now.getHours() * 60 + now.getMinutes() >= lastEnd - SLOT_CLOSE_BUFFER_MIN) d.setDate(d.getDate() + 1);
-  return localISO(d);
+  return localISO(new Date());
 }
 
 async function init() {
   CFG = await (await fetch('/api/config')).json();
-  SLOT_CLOSE_BUFFER_MIN = CFG.slotCloseBufferMin ?? SLOT_CLOSE_BUFFER_MIN; // ใช้ค่ากลางจาก backend
 
   $('date').min = localISO(new Date());
   $('date').onchange = () => { dateTouched = true; rebuildTimeSlots(); renderWarm(); }; // พี่วินเลือกวันเอง → ไม่ snap ทับ
@@ -237,6 +232,7 @@ async function init() {
     recalc();
   };
   $('clear').onclick = resetForm;
+  $('bookTomorrow').onclick = bookTomorrow;
   // ปุ่มลัด: Esc = ล้างฟอร์ม — ยกเว้นตอน popup กรอกเปิดอยู่ (กันล้างกลางคัน)
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && !$('overlay').classList.contains('show')) resetForm();
@@ -379,16 +375,33 @@ function rebuildTimeSlots() {
     if (!closed && firstOpen === null) firstOpen = s;
   });
 
-  if (firstOpen === null && live) {
-    // DNP ปิดทุกรอบของวันนี้แล้ว (pool กำลังเด้งไปพรุ่งนี้ — เดี๋ยว poll ถัดไป snap วันให้เอง)
+  const closedAll = firstOpen === null && !!live;  // DNP ปิดทุกรอบของวันที่เลือกแล้ว
+  if (closedAll) {
     sel.innerHTML = '';
-    sel.add(new Option('— วันนี้ปิดรับแล้ว กำลังเตรียมพรุ่งนี้ให้… —', ''));
+    sel.add(new Option('— ปิดรับจองแล้ว —', ''));
     sel.value = '';
   } else {
     // คงค่าที่พี่วินเลือกไว้ถ้ายังเปิดอยู่ ไม่งั้นเด้งไปรอบที่เปิดรอบแรก
     const prevOpt = Array.from(sel.options).find((o) => o.value === prev && !o.disabled);
     sel.value = prevOpt ? prev : (firstOpen || '');
   }
+  // วันนี้ปิดทุกรอบ → ดับปุ่มจอง + ขึ้นแบนเนอร์ให้ จนท.กดยืนยันจองพรุ่งนี้เอง (ไม่เด้งพรุ่งนี้อัตโนมัติ)
+  updateClosedBanner(closedAll && $('date').value === localISO(new Date()));
+}
+
+// แบนเนอร์ "วันนี้หมดเวลาจองแล้ว" — ดับปุ่มจองวันนี้ กัน นทท.จ่ายเงินผิดวัน
+function updateClosedBanner(show) {
+  $('todayClosed').style.display = show ? 'block' : 'none';
+  if (!$('overlay').classList.contains('show')) $('go').disabled = show; // ไม่แตะตอนกำลังกรอกอยู่
+}
+
+// จนท.กดยืนยัน "จองล่วงหน้าพรุ่งนี้" — เปลี่ยนวันเป็นพรุ่งนี้ (cold path: warm สด ~6 วิ ตอนกดจอง)
+function bookTomorrow() {
+  const d = new Date(); d.setDate(d.getDate() + 1);
+  $('date').value = localISO(d);
+  dateTouched = true;        // จนท.เลือกวันเอง → pollWarm ไม่ snap กลับวันนี้
+  rebuildTimeSlots();
+  renderWarm();
 }
 
 function vehRow(selMatch, removable) {

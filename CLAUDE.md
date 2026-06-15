@@ -51,9 +51,9 @@ git clone https://github.com/vwin2537-arch/E-ticket-automation.git
   มี field `en` ทุกประเภท (ยานพาหนะ/ผู้เดินทาง) ไว้โชว์ใน console เป็นอังกฤษ — เพิ่มประเภทใหม่อย่าลืมใส่ `en`
 - `src/automation.js` — `warmTab()` (Phase A: เปิด→การ์ด→เลือกวัน + `readTimeSlots()` อ่านรอบจริง) + `fillBooking()`
   (Phase B: เวลา/รถ/คน→สรุป; `selectOption` ฟ้องถ้ารอบ `is-disabled`) + `runBooking()` (warm+fill รวม cold path/เทส)
-  + `bookDate()` (seed วันเป้าหมาย: วันนี้ก่อน 15:20 / พรุ่งนี้หลัง)
-- `src/pool.js` — warm pool: `init()` อุ่น POOL_SIZE แท็บตอน start, `acquire(date)` หยิบ+เติมคืน. `targetDate` data-driven
-  (วันนี้ปิดทุกรอบ → เด้งพรุ่งนี้เอง) + `slots` รอบเวลาจริงจาก DNP — ทั้งคู่ส่งผ่าน `status()`. acquire ทิ้งแท็บไม่ตรง targetDate
+  + `bookDate()` (วันเป้าหมาย = **วันนี้เสมอ** — ไม่เด้งพรุ่งนี้อัตโนมัติ)
+- `src/pool.js` — warm pool: `init()` อุ่น POOL_SIZE แท็บตอน start, `acquire(date)` หยิบ+เติมคืน. `targetDate` = วันนี้เสมอ
+  + `slots` รอบเวลาจริงจาก DNP — ทั้งคู่ส่งผ่าน `status()`. acquire ทิ้งแท็บไม่ตรง targetDate
 - `src/datepicker.js` — เลือกวันใน Element UI date picker
 - `src/names.js` — generate ชื่อมั่วๆ (ระบบไม่เช็กชื่อจริง)
 - `src/server.js` — Express + API `/api/config`, `/api/book`, `/api/login-status`, `/api/pool-status` (สถานะ warm: ready/warming/size/today), `/api/shutdown` (ปุ่มปิด: ส่ง log→shutdown→exit 0; บล็อกถ้ามี pending)
@@ -121,9 +121,11 @@ session อยู่ได้นานเป็นปี (refresh_token) → **�
 บอทค้าง "เลือกเวลาไม่ได้". **เลิกเดา → อ่านจริง:** `warmTab` เรียก `readTimeSlots()` อ่าน `{text,disabled}` จาก DNP
 ติดมากับ tab → `pool` ส่งผ่าน `status().slots` → `/api/pool-status` → หน้ากากโชว์เฉพาะรอบที่ DNP เปิดจริง
 (`rebuildTimeSlots` ใช้ `warmCache.slots` ไม่ใช่ buffer). `selectOption` เจอ `is-disabled` ฟ้องทันที (ตาข่ายชั้นสุดท้าย).
-**วันเป้าหมาย data-driven (`pool.targetDate`):** seed = `bookDate()` (วันนี้ก่อน 15:20 / พรุ่งนี้หลัง) แต่ถ้าอุ่น "วันนี้"
-แล้ว DNP ปิด **ทุกรอบ** → pool เด้งอุ่น "พรุ่งนี้" เอง; หน้ากาก snap วันตาม `bookDate` จาก pool (เว้นพี่วินแก้วันเอง).
-`SLOT_CLOSE_BUFFER_MIN` เหลือเป็นแค่ seed ของ `bookDate()` (ไม่ใช้ปิดรอบในหน้ากากแล้ว).
+**วันเป้าหมาย = "วันนี้" เสมอ (`pool.targetDate`):** `bookDate()`=วันนี้ — **ไม่เด้งพรุ่งนี้อัตโนมัติ** (15/6/69 แก้:
+นทท.ที่ด่าน=walk-in เข้าวันนี้ การเด้งพรุ่งนี้เงียบๆ ทำให้จ่ายเงินผิดวัน). ถ้า DNP ปิด **ทุกรอบ** ของวันนี้ →
+หน้ากากดับปุ่มจอง + ขึ้นแบนเนอร์แดง `#todayClosed` "วันนี้หมดเวลาจองแล้ว" + ปุ่ม "จองล่วงหน้าพรุ่งนี้ →"
+(`bookTomorrow()` set วัน=พรุ่งนี้ `dateTouched=true` → cold path warm สด). **จนท.ต้องกดยืนยันเอง ไม่เด้งให้**.
+`SLOT_CLOSE_BUFFER_MIN` ใช้แค่ปิดรอบฝั่ง DNP — `bookDate()` ไม่ใช้แล้ว.
 **diag:** `node scripts/diag-timeslot.js <YYYY-MM-DD>` อ่านรอบเวลา+disabled แบบอ่านอย่างเดียว (ไม่จอง) ไว้ debug
 
 ## pipeline จองดักหลายใบ (#5) — ✅ ทำแล้ว (3/6/69)
