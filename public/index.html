@@ -266,6 +266,13 @@ function resetForm() {
 let warmCache = null;
 let dateTouched = false;   // พี่วินแก้วันเองหรือยัง — ถ้ายัง pollWarm จะ snap วันให้ตรง pool
 let lastSlotSig = '';      // ลายเซ็นรอบเวลาล่าสุด — rebuild dropdown เฉพาะตอนสถานะจริงเปลี่ยน
+// gate ปุ่มจอง #go — มี 2 เงื่อนไขคุมพร้อมกัน (login + วันนี้ปิด) ต้องรวมจุดเดียว ไม่งั้นเขียนทับกัน
+let loginOK = null;        // true=เข้าระบบ / false=ออกแล้ว / null=ยังไม่รู้ (เช็กไม่ได้→ปล่อยจอง)
+let todayClosed = false;   // วันที่เลือก=วันนี้ + DNP ปิดทุกรอบ → ห้ามจองวันนี้
+function syncGoButton() {
+  if ($('overlay').classList.contains('show')) return; // กำลังกรอกอยู่ ไม่แตะ
+  $('go').disabled = todayClosed || loginOK === false;
+}
 function renderWarm() {
   const box = $('warmStatus');
   if (!warmCache) return;
@@ -336,18 +343,19 @@ async function checkLoginStatus(force = false) {
     if (loggedIn) {
       box.className = 'lstat ok';
       box.innerHTML = '✅ เข้าระบบ DNP อยู่ — พร้อมจอง <button class="recheck" onclick="checkLoginStatus(true)">เช็กซ้ำ</button>';
-      $('go').disabled = false;
+      loginOK = true;
     } else {
       box.className = 'lstat bad';
       box.innerHTML = '❌ ออกจากระบบแล้ว — ดับเบิลคลิก <b>เข้าระบบ DNP</b> ก่อนนะคะ <button class="recheck" onclick="checkLoginStatus(true)">เช็กซ้ำ</button>';
-      $('go').disabled = true;
+      loginOK = false;
     }
   } catch (e) {
     // เช็กไม่ได้ ไม่บล็อกพี่วิน — ปล่อยให้ตอนกดจอง บอทเช็กเองอีกที
     box.className = 'lstat checking';
     box.innerHTML = '⚠️ เช็กสถานะไม่ได้ — กดจองได้เลย เดี๋ยวบอทเช็กให้อีกที <button class="recheck" onclick="checkLoginStatus(true)">เช็กซ้ำ</button>';
-    $('go').disabled = false;
+    loginOK = null;
   }
+  syncGoButton();
 }
 
 // สร้างตัวเลือกรอบเวลาตาม "สถานะจริงจาก DNP" (ไม่เดา buffer เวลาอีก)
@@ -392,7 +400,8 @@ function rebuildTimeSlots() {
 // แบนเนอร์ "วันนี้หมดเวลาจองแล้ว" — ดับปุ่มจองวันนี้ กัน นทท.จ่ายเงินผิดวัน
 function updateClosedBanner(show) {
   $('todayClosed').style.display = show ? 'block' : 'none';
-  if (!$('overlay').classList.contains('show')) $('go').disabled = show; // ไม่แตะตอนกำลังกรอกอยู่
+  todayClosed = show;
+  syncGoButton();
 }
 
 // จนท.กดยืนยัน "จองล่วงหน้าพรุ่งนี้" — เปลี่ยนวันเป็นพรุ่งนี้ (cold path: warm สด ~6 วิ ตอนกดจอง)

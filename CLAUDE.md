@@ -126,6 +126,8 @@ session อยู่ได้นานเป็นปี (refresh_token) → **�
 หน้ากากดับปุ่มจอง + ขึ้นแบนเนอร์แดง `#todayClosed` "วันนี้หมดเวลาจองแล้ว" + ปุ่ม "จองล่วงหน้าพรุ่งนี้ →"
 (`bookTomorrow()` set วัน=พรุ่งนี้ `dateTouched=true` → cold path warm สด). **จนท.ต้องกดยืนยันเอง ไม่เด้งให้**.
 `SLOT_CLOSE_BUFFER_MIN` ใช้แค่ปิดรอบฝั่ง DNP — `bookDate()` ไม่ใช้แล้ว.
+⚠️ **ปุ่มจอง `#go` มี 2 เงื่อนไขคุม (login + วันนี้ปิด) → รวมที่ `syncGoButton()` จุดเดียว** อ่าน `loginOK`+`todayClosed`
+พร้อมกัน. **ห้ามเซ็ต `$('go').disabled` ตรงๆ จากที่อื่น** (เคยเป็นบั๊ก: checkLoginStatus async เสร็จทีหลังเปิดปุ่มทับแบนเนอร์).
 **diag:** `node scripts/diag-timeslot.js <YYYY-MM-DD>` อ่านรอบเวลา+disabled แบบอ่านอย่างเดียว (ไม่จอง) ไว้ debug
 
 ## pipeline จองดักหลายใบ (#5) — ✅ ทำแล้ว (3/6/69)
