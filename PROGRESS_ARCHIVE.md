@@ -3,6 +3,14 @@
 > ย้ายมาจาก `PROGRESS.md` เมื่อ 7/6/69 เพื่อคุมเพดาน ~100 บรรทัด — เนื้อหา **setup → 3/6/69**
 > สถานะปัจจุบัน + งานล่าสุด + บทเรียนที่ยังใช้ อยู่ใน [PROGRESS.md](PROGRESS.md) / technical detail อยู่ [CLAUDE.md](CLAUDE.md)
 
+### (7/6/69 #3) แก้บั๊ก Windows: หน้าต่างหายนอกจอ ตอนกดย่อ/เลือกจ่ายเงิน
+อาการ (เครื่องด่าน Windows): หน้าสรุปเด้งเต็มจอ (maximized) ปกติ **แต่** (1) กด restore-down/ย่อ → หน้าต่างหายนอกจอ
+เปิด/ปิดไม่ได้ (2) เลือกวิธีจ่ายเงิน+ยืนยัน → หน้าต่าง QR จ่ายเงินที่ควรเด้งใหม่กลับหายหลังจอ. **root cause เดียวกัน =
+launch flag `--window-position=-32000,-32000`:** (1) `revealWindow` ตั้ง `normal{60,40}` มี race → ไม่ apply →
+"restore bounds" ค้างที่ -32000 → กดย่อเด้งกลับนอกจอ. (2) popup จ่าย/ตั๋วเกิดที่ default -32000 ตาม flag.
+**แก้ (`automation.js`):** (1) Windows วน set `normal` + ยืนยัน `getWindowBounds` left/top≥0 ก่อน maximized. (2)
+`context.on('page')` ดึง popup (`opener()≠null`) กลับเข้าจอ. ⏳ รอเทส Windows จริง (Mac reproduce ไม่ได้)
+
 ## ทำแล้ว ✅ (setup → 3/6/69)
 - Setup Node + Playwright + Express
 - Login DNP + save session (`auth/storageState.json`)

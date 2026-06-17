@@ -5,6 +5,7 @@ const path = require('path');
 const { fillBooking, checkLogin, setReceiptWidth } = require('./automation');
 const pool = require('./pool');
 const { logUsage } = require('./logger');
+const { createCollector } = require('./timing');
 const { uploadLogs } = require('../scripts/upload-logs');
 const { PARK, POOL_SIZE, MAX_PENDING, TIME_SLOTS, SLOT_CLOSE_BUFFER_MIN, VEHICLE_TYPES, TRAVELER_TYPES } = require('./config');
 
@@ -113,9 +114,12 @@ app.post('/api/book', async (req, res) => {
     }
   }
   let tab = null;
+  const timing = createCollector({ dryRun: !!dryRun }); // จับเวลาแต่ละ step ลง timing.csv (วิเคราะห์คอขวด)
   try {
+    const acqStart = Date.now();
     tab = await pool.acquire(params.date, console.log); // หยิบแท็บ warm (หรือ warm สดถ้าไม่มี)
-    const r = await withTimeout(fillBooking(tab.page, params, { dryRun: !!dryRun }), BOOK_TIMEOUT_MS);
+    timing.mark('acquire', Date.now() - acqStart, ''); // warm hit = ~0, cold (pool ว่าง) = ~6000ms
+    const r = await withTimeout(fillBooking(tab.page, params, { dryRun: !!dryRun, timing }), BOOK_TIMEOUT_MS);
     // สำเร็จ — ใบใหม่ขึ้นจอแล้ว
     //  ทดสอบ: ปิดใบทดสอบเก่าทันที (ไม่เข้าคิว ไม่สะสม)
     //  จริง: ดักไว้ในคิว ไม่ปิดใบเก่า — จนท.กรอกใบถัดไปได้เลยระหว่างคนแรกจ่าย (#5)
@@ -137,6 +141,8 @@ app.post('/api/book', async (req, res) => {
     if (tab?.browser) setTimeout(() => tab.browser.close().catch(() => {}), 60000);
   } finally {
     running = false;
+    // เขียน timing ท้ายสุด (ครอบทั้งสำเร็จ/พลาด) — total นับจาก params เผื่อ fail กลางคัน
+    timing.flush({ total: (params.travelers || []).reduce((s, t) => s + (t.count || 0), 0) });
   }
 });
 

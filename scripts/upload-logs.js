@@ -8,7 +8,7 @@ const path = require('path');
 const { LOG_UPLOAD } = require('../src/config');
 
 const LOG_DIR = path.join(__dirname, '..', 'logs');
-const FILES = ['usage.csv', 'server.log']; // log การจอง + log การทำงาน/crash
+const FILES = ['usage.csv', 'server.log', 'timing.csv']; // log การจอง + การทำงาน/crash + จับเวลา step
 const TIMEOUT_MS = 10000;
 
 async function uploadLogs(log = console.log) {

@@ -264,13 +264,15 @@ async function warmTab(date, opts = {}) {
  * คืน { ok, total, screenshot } — ไม่ปิด browser ถ้าสำเร็จ (ให้พี่วินตรวจ+จ่ายต่อ)
  */
 async function fillBooking(page, params, opts = {}) {
-  const { dryRun = false, log = console.log } = opts;
+  const { dryRun = false, log = console.log, timing = null } = opts;
+  // ห่อ step วัดเวลา — ไม่ส่ง timing = เรียก fn ตรงๆ (no-op, ไม่กระทบ path อื่น/เทส)
+  const T = (step, idx, fn) => (timing ? timing.wrap(step, idx, fn) : fn());
 
   try {
     // 3) เลือกเวลา
     log(`Selecting time slot ${params.timeSlot}...`);
     try {
-      await selectOption(page, 'เลือกเวลา', 0, params.timeSlot);
+      await T('time_slot', '', () => selectOption(page, 'เลือกเวลา', 0, params.timeSlot));
     } catch (e) {
       // เลือกเวลาไม่ได้ = รอบนี้หายจาก dropdown (DNP ปิดรอบ/ใกล้หมดเวลา) ไม่ใช่ "ระบบช้า" — บอกให้ชัด
       throw new Error(`เลือกรอบเวลา "${params.timeSlot}" ไม่ได้ — รอบนี้อาจปิดรับแล้ว (ใกล้/เลยเวลาสิ้นสุดรอบ) ลองเลือกรอบอื่นนะคะ`);
@@ -282,17 +284,21 @@ async function fillBooking(page, params, opts = {}) {
     log(`Vehicles: ${vehicles.length}`);
     for (let i = 0; i < vehicles.length; i++) {
       if (i > 0) {
-        await page.getByRole('button', { name: 'เพิ่มประเภทยานพาหนะ' }).click();
-        // รอช่องคันใหม่ render แทนรอเวลาตายตัว (auto-wait)
-        await page.locator('input[placeholder="เลือกประเภทยานพาหนะ"]').nth(i).waitFor({ state: 'visible', timeout: 3000 });
+        await T('add_vehicle', i + 1, async () => {
+          await page.getByRole('button', { name: 'เพิ่มประเภทยานพาหนะ' }).click();
+          // รอช่องคันใหม่ render แทนรอเวลาตายตัว (auto-wait)
+          await page.locator('input[placeholder="เลือกประเภทยานพาหนะ"]').nth(i).waitFor({ state: 'visible', timeout: 3000 });
+        });
       }
       log(`  Vehicle #${i + 1}: ${enVehicle(vehicles[i].match)} (${vehicles[i].plate})`);
-      await selectOption(page, 'เลือกประเภทยานพาหนะ', i, vehicles[i].match);
+      await T('vehicle_type', i + 1, () => selectOption(page, 'เลือกประเภทยานพาหนะ', i, vehicles[i].match));
       // พิมพ์ทะเบียนแบบ type จริง เพื่อให้ Vue รับค่า (เหมือนช่องชื่อ)
       const plateInput = page.locator('input[placeholder="เลขทะเบียน"]').nth(i);
-      await plateInput.click();
-      await plateInput.pressSequentially(vehicles[i].plate || '-', { delay: 5 });
-      await plateInput.press('Tab');
+      await T('vehicle_plate', i + 1, async () => {
+        await plateInput.click();
+        await plateInput.pressSequentially(vehicles[i].plate || '-', { delay: 5 });
+        await plateInput.press('Tab');
+      });
     }
 
     // 5) ผู้เดินทาง — กระจายเป็นรายคน
@@ -307,21 +313,25 @@ async function fillBooking(page, params, opts = {}) {
     // กรอกทีละคน — กรอกคนปัจจุบันให้ครบก่อน ค่อยกด "เพิ่มผู้เดินทาง" สร้างคนถัดไป
     for (let i = 0; i < total; i++) {
       if (i > 0) {
-        await page.getByRole('button', { name: 'เพิ่มผู้เดินทาง' }).click();
-        // รอช่องคนใหม่ render แทนรอเวลาตายตัว (auto-wait)
-        await page.locator('input[placeholder="ประเภทผู้เดินทาง"]').nth(i).waitFor({ state: 'visible', timeout: 3000 });
+        await T('add_traveler', i + 1, async () => {
+          await page.getByRole('button', { name: 'เพิ่มผู้เดินทาง' }).click();
+          // รอช่องคนใหม่ render แทนรอเวลาตายตัว (auto-wait)
+          await page.locator('input[placeholder="ประเภทผู้เดินทาง"]').nth(i).waitFor({ state: 'visible', timeout: 3000 });
+        });
       }
       const t = flat[i];
       const name = t.nationality === 'Thai' ? thaiNames(1)[0] : interNames(1)[0];
       log(`  Traveler #${i + 1}: ${enTraveler(t.match)} (${t.nationality})`);
-      await selectOption(page, 'ประเภทผู้เดินทาง', i, t.match);
-      await selectOption(page, 'สัญชาติ', i, t.nationality, { exact: true });
+      await T('sel_type', i + 1, () => selectOption(page, 'ประเภทผู้เดินทาง', i, t.match));
+      await T('sel_nat', i + 1, () => selectOption(page, 'สัญชาติ', i, t.nationality, { exact: true }));
       // พิมพ์ชื่อแบบ type จริง เพื่อให้ Vue รับรู้ค่า (fill เฉยๆ ไม่ trigger)
       const nameInput = page.locator('input[placeholder="ชื่อ - นามสกุล"]').nth(i);
-      await nameInput.click();
-      await nameInput.pressSequentially(name, { delay: 5 });
-      await nameInput.press('Tab');
-      await page.waitForTimeout(200);
+      await T('type_name', i + 1, async () => {
+        await nameInput.click();
+        await nameInput.pressSequentially(name, { delay: 5 });
+        await nameInput.press('Tab');
+      });
+      await T('wait200', i + 1, () => page.waitForTimeout(200));
     }
 
     // 6) กรอกครบ — screenshot ต้องทำหลัง revealWindow เสมอ
@@ -330,8 +340,8 @@ async function fillBooking(page, params, opts = {}) {
 
     if (dryRun) {
       log('Dry-run mode: stopping before the Next button.');
-      await revealWindow(page); // เด้งหน้าต่างกลับมา (render ทำงาน) ก่อนถ่ายภาพ
-      await page.screenshot({ path: SHOT('shot-filled.png'), fullPage: true });
+      await T('reveal', '', () => revealWindow(page)); // เด้งหน้าต่างกลับมา (render ทำงาน) ก่อนถ่ายภาพ
+      await T('screenshot', '', () => page.screenshot({ path: SHOT('shot-filled.png'), fullPage: true }));
       log('Saved screenshot: shot-filled.png');
       return { ok: true, total, screenshot: SHOT('shot-filled.png'), dryRun: true };
     }

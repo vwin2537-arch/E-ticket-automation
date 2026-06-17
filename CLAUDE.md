@@ -65,6 +65,9 @@ git clone https://github.com/vwin2537-arch/E-ticket-automation.git
   แยกโฟลเดอร์ตามชื่อเครื่อง (os.hostname) รองรับหลายด่าน. เรียกจาก `/api/shutdown` + `RESET-Windows.bat` (CLI). ⚠️ ไม่ส่ง `server-live.log` เดิม (ขยะ)
 - `src/log-upload.local.js` — **url+secret ส่ง log (gitignore, repo public ห้ามหลุด)** — config.js `require` override ถ้ามี. ก๊อปไปเครื่องด่านด้วย
 - `apps-script/Code.gs` + `README-deploy.md` — Apps Script web app รับ log เขียนลง Drive (พี่วิน deploy เอง ตั้ง FOLDER_ID+SECRET → URL ใส่ `config.js`)
+- `src/timing.js` — จับเวลาแต่ละ step การกรอกลง `logs/timing.csv` (long format 1แถว/step, group `bookingId`) วิเคราะห์คอขวด
+  `createCollector()` → ส่งเข้า `fillBooking(opts.timing)` (helper `T()` no-op ถ้าไม่ส่ง) + server วัด `acquire`. gitignore + ส่ง Drive
+- `scripts/diag-selectopt.js` — debug `selectOption` แยกเวลา phase + นับ attempt + ดู network (อ่านอย่างเดียว ไม่จอง) `node scripts/diag-selectopt.js [YYYY-MM-DD]`
 - `src/logger.js` — เขียน log การใช้งานลง `logs/usage.csv` (logUsage) — เรียกจาก server.js ทุกครั้งที่จอง
   คอลัมน์ท้าย: `คนไทย`/`ต่างชาติ`/`รายละเอียดผู้เดินทาง`. `ensureHeader()` อัพเดท header ไฟล์เดิมเมื่อเพิ่ม column (ไม่ลบแถวเก่า)
   ⚠️ ส่ง zip ไป Windows **ห้ามใส่ logs/usage.csv** (ทับ log จริงของเครื่องด่าน) — header เก่าจะอัพเกรดเองตอนจองครั้งหน้า
@@ -168,6 +171,18 @@ session อยู่ได้นานเป็นปี (refresh_token) → **�
   (1) `page.route` บล็อกรูป → ช้า 4 เท่า + โลโก้หาย
   (2) `minimize` หน้าต่าง → ช้า 5 เท่า (Chrome throttle ตอนย่อ)
   (3) headless กรอกแล้ว handoff ไป headful → หน้าสรุป DNP อยู่ใน memory ไม่มี URL เฉพาะ ข้ามเบราว์เซอร์ไม่ได้
+
+## ⚡ ความเร็ว (วิเคราะห์ 17/6/69 — วัดจริงด้วย timing.csv + diag-selectopt)
+**สิ่งที่เร่งไม่ได้ (เป็นของ DNP / อย่าเสียเวลาแก้):**
+- **กรอกคนที่ 2+ ช้า ~2วิ/คน** = `input.click()` รอแถวใหม่ active. **เป็น timer ในหน้า DNP เอง** (พิสูจน์: คงที่ 2009-2035ms
+  ทุก run, ไม่มี network call ระหว่าง gap, `click({force:true})` พัง=dropdown ไม่เปิด, "รอ-แล้ว-คลิก" รวมแย่กว่าคลิกทันที).
+  Playwright คลิกทันทีที่ element actionable = เร็วสุดแล้ว. **pre-add ทุกแถวไม่ได้** (DNP บล็อกเพิ่มคนถ้าคนเดิมไม่ครบ)
+- **เลือกเวลา/รถ/สัญชาติ ~470-570ms** = `item.click()` actionability + เปิด dropdown = network/DNP ไม่ใช่เรา
+**สิ่งที่เร่งได้จริง (ยังไม่ทำ):**
+- **`waitForTimeout(3000)` หลังกด "ต่อไป" (`automation.js`)** → เปลี่ยนเป็น poll element หน้าสรุป (~2วิ/ใบ). อยู่ใน path
+  จองจริงเท่านั้น (dryRun หยุดก่อน) → ต้องรันจองจริง 1 ครั้งหา selector หน้าสรุปก่อน
+- **acquire cold ~7วิ เกิดเมื่อจองวันที่ pool ไม่ได้ warm** (เช่นพรุ่งนี้หลัง cutoff). จองวันนี้ปกติ acquire≈0 (warm hit).
+  optional: pre-warm พรุ่งนี้เพิ่มถ้าด่านรับจองเย็นบ่อย. **`reveal`~1.5วิ = Mac dance เท่านั้น ไม่เกิดบน Windows ด่าน**
 
 ## Persona
 มุก (ไข่มุก) เลขาฯ พี่วิน — ภาษาไทยเป็นกันเอง ลงท้าย "ค่ะ"

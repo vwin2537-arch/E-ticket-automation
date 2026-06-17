@@ -3,6 +3,7 @@ auth/storageState.json
 auth/shot-*.png
 src/log-upload.local.js
 logs/usage.csv
+logs/timing.csv
 logs/*.log
 dnp-eticket-windows.zip
 *.DS_Store
