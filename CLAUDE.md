@@ -178,9 +178,11 @@ session อยู่ได้นานเป็นปี (refresh_token) → **�
   ทุก run, ไม่มี network call ระหว่าง gap, `click({force:true})` พัง=dropdown ไม่เปิด, "รอ-แล้ว-คลิก" รวมแย่กว่าคลิกทันที).
   Playwright คลิกทันทีที่ element actionable = เร็วสุดแล้ว. **pre-add ทุกแถวไม่ได้** (DNP บล็อกเพิ่มคนถ้าคนเดิมไม่ครบ)
 - **เลือกเวลา/รถ/สัญชาติ ~470-570ms** = `item.click()` actionability + เปิด dropdown = network/DNP ไม่ใช่เรา
-**สิ่งที่เร่งได้จริง (ยังไม่ทำ):**
-- **`waitForTimeout(3000)` หลังกด "ต่อไป" (`automation.js`)** → เปลี่ยนเป็น poll element หน้าสรุป (~2วิ/ใบ). อยู่ใน path
-  จองจริงเท่านั้น (dryRun หยุดก่อน) → ต้องรันจองจริง 1 ครั้งหา selector หน้าสรุปก่อน
+**สิ่งที่เร่งได้จริง:**
+- ✅ **`waitForTimeout(3000)` หลังกด "ต่อไป" → poll ปุ่ม "เช็คเอาท์" หน้าสรุป** (`automation.js` step 7, แก้ 17/6/69).
+  ปุ่ม "เช็คเอาท์" มีเฉพาะหน้าสรุปตอนพร้อมจ่าย (selector อ่านจาก `shot-summary.png` จริง ไม่เดา) → `waitFor visible`
+  timeout 8วิ + `.catch()` (DNP เปลี่ยน UI ก็ถ่ายภาพต่อ ไม่พัง). ปกติหน้าสรุปขึ้น <1วิ → ประหยัด ~2วิ/ใบ.
+  **⏳ verify รอบจองจริงรอบหน้า** (path นี้ dryRun ไม่แตะ — เทสไม่ได้จนกว่าจะจองจริง)
 - **acquire cold ~7วิ เกิดเมื่อจองวันที่ pool ไม่ได้ warm** (เช่นพรุ่งนี้หลัง cutoff). จองวันนี้ปกติ acquire≈0 (warm hit).
   optional: pre-warm พรุ่งนี้เพิ่มถ้าด่านรับจองเย็นบ่อย. **`reveal`~1.5วิ = Mac dance เท่านั้น ไม่เกิดบน Windows ด่าน**
 

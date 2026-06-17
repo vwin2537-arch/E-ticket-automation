@@ -349,7 +349,11 @@ async function fillBooking(page, params, opts = {}) {
     // 7) กด "ต่อไป" ไปหน้าสรุป แล้วหยุด (ให้พี่วินตรวจ+จ่ายเอง)
     log('Clicking Next -> summary page...');
     await page.getByRole('button', { name: 'ต่อไป' }).click();
-    await page.waitForTimeout(3000);
+    // รอจน "หน้าสรุป" พร้อมจริง — poll ปุ่ม "เช็คเอาท์" (มีเฉพาะหน้าสรุปตอนพร้อมจ่าย) แทน fixed 3วิ
+    // selector มาจาก shot-summary.png จริง. timeout 8วิ + catch = ถ้า DNP เปลี่ยน UI ก็ยังถ่ายภาพต่อ ไม่พัง
+    await page.getByRole('button', { name: /เช็คเอาท์/ })
+      .waitFor({ state: 'visible', timeout: 8000 })
+      .catch(() => log('Summary checkout button not detected in 8s; capturing anyway.'));
     await revealWindow(page); // เด้งหน้าต่างขึ้นมาให้พี่วินตรวจ+จ่าย (ก่อนถ่ายภาพ)
     await page.screenshot({ path: SHOT('shot-summary.png'), fullPage: true });
     log('Reached summary page (shot-summary.png). Please review and pay.');
