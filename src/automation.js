@@ -264,9 +264,11 @@ async function warmTab(date, opts = {}) {
  * คืน { ok, total, screenshot } — ไม่ปิด browser ถ้าสำเร็จ (ให้พี่วินตรวจ+จ่ายต่อ)
  */
 async function fillBooking(page, params, opts = {}) {
-  const { dryRun = false, log = console.log, timing = null } = opts;
+  const { dryRun = false, log = console.log, timing = null, onProgress = null } = opts;
   // ห่อ step วัดเวลา — ไม่ส่ง timing = เรียก fn ตรงๆ (no-op, ไม่กระทบ path อื่น/เทส)
   const T = (step, idx, fn) => (timing ? timing.wrap(step, idx, fn) : fn());
+  // รายงานความคืบหน้าให้ server → หน้ากากโชว์ "คนที่ 3/7" + รีเซ็ต watchdog กันโดนตัดตอนกลุ่มใหญ่
+  const prog = (data) => { try { onProgress?.(data); } catch {} };
 
   try {
     // 3) เลือกเวลา
@@ -312,6 +314,7 @@ async function fillBooking(page, params, opts = {}) {
 
     // กรอกทีละคน — กรอกคนปัจจุบันให้ครบก่อน ค่อยกด "เพิ่มผู้เดินทาง" สร้างคนถัดไป
     for (let i = 0; i < total; i++) {
+      prog({ current: i, total, stage: 'traveler' }); // เริ่มกรอกคนที่ i+1 (เสร็จแล้ว i คน)
       if (i > 0) {
         await T('add_traveler', i + 1, async () => {
           await page.getByRole('button', { name: 'เพิ่มผู้เดินทาง' }).click();
@@ -336,6 +339,7 @@ async function fillBooking(page, params, opts = {}) {
 
     // 6) กรอกครบ — screenshot ต้องทำหลัง revealWindow เสมอ
     //    (ตอนหน้าต่างถูกย่อ Chrome หยุด render → page.screenshot จะค้างรอ fonts จน timeout)
+    prog({ current: total, total, stage: 'summary' }); // กรอกครบแล้ว กำลังไปหน้าสรุป
     log('All fields filled.');
 
     if (dryRun) {

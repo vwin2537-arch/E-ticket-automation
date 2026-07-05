@@ -145,6 +145,7 @@
     <p>กำลังดำเนินการบันทึกข้อมูลการเข้าใช้บริการ<br>กรุณารอสักครู่...</p>
     <div class="pbar"><i id="pbarFill"></i></div>
     <div class="pct" id="pbarPct">0%</div>
+    <div class="pct" id="pbarStatus" style="margin-top:6px"></div>
   </div>
 </div>
 <div class="card">
@@ -494,6 +495,39 @@ function finishProgress() {
   $('pbarFill').style.width = '100%';
   $('pbarPct').textContent = '100%';
 }
+// poll ความคืบหน้าจริงจาก server ทุกวิ — โชว์ "คนที่ 3/7" ให้ จนท.เห็นว่าระบบยังทำงาน ไม่ได้ค้าง
+// (progress bar เดิมเป็น simulated อย่างเดียว กลุ่มใหญ่ 30-40 คนใช้เวลา 2-3 นาที ดูเหมือนค้าง)
+let statTimer = null;
+function startStatusPoll() {
+  const el = $('pbarStatus');
+  el.textContent = '';
+  clearInterval(statTimer);
+  statTimer = setInterval(async () => {
+    try {
+      const p = await (await fetch('/api/book-progress')).json();
+      if (p.idle || p.done) return;
+      if (p.stage === 'traveler' || p.stage === 'summary') {
+        el.textContent = p.stage === 'summary'
+          ? `บันทึกข้อมูลครบ ${p.total} รายการ — กำลังสรุปรายการ...`
+          : `กำลังบันทึกข้อมูลผู้เข้าใช้บริการ รายการที่ ${p.current + 1}/${p.total}`;
+      }
+    } catch (e) {}
+  }, 1000);
+}
+function stopStatusPoll() { clearInterval(statTimer); statTimer = null; $('pbarStatus').textContent = ''; }
+// fetch หลุดระหว่างรอ (Chrome ตัด ~5 นาทีถ้าจองกลุ่มใหญ่มาก) แต่งานฝั่ง server ยังวิ่งต่อ
+// → รอผลผ่าน /api/book-progress แทน (เช็ก startedAt กันหยิบผลใบเก่า) สูงสุด 15 นาที
+async function waitResultViaPoll(t0) {
+  for (let i = 0; i < 450; i++) {
+    await new Promise((r) => setTimeout(r, 2000));
+    try {
+      const p = await (await fetch('/api/book-progress')).json();
+      if (p.idle || (p.startedAt || 0) < t0 - 5000) return null; // ไม่ใช่งานของเรา
+      if (p.done) return p.result;
+    } catch (e) {}
+  }
+  return null;
+}
 $('go').onclick = async () => {
   const travelers = collectTravelers();
   const msg = $('msg');
@@ -503,22 +537,32 @@ $('go').onclick = async () => {
   $('go').disabled = true; $('go').textContent = '⏳ มุกกำลังกรอกให้...';
   $('overlay').classList.add('show');
   startProgress();
+  startStatusPoll();
   msg.style.display = 'none';
+  const t0 = Date.now(); // ไว้เช็กว่า progress ที่ poll เจอเป็นงานใบนี้จริง (ไม่ใช่ค้างจากใบก่อน)
   try {
-    const r = await fetch('/api/book', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        date: $('date').value, timeSlot: $('time').value,
-        vehicles: collectVehicles(),
-        travelers, dryRun: $('dryRun').checked,
-      }),
-    });
-    const d = await r.json();
+    let d;
+    try {
+      const r = await fetch('/api/book', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          date: $('date').value, timeSlot: $('time').value,
+          vehicles: collectVehicles(),
+          travelers, dryRun: $('dryRun').checked,
+        }),
+      });
+      d = await r.json();
+    } catch (fetchErr) {
+      // การเชื่อมต่อหลุดระหว่างรอ — งานฝั่ง server อาจยังวิ่งอยู่ ลองกู้ผลผ่าน polling ก่อนฟ้อง error
+      d = await waitResultViaPoll(t0);
+      if (!d) throw fetchErr;
+    }
     msg.className = d.ok ? 'ok' : 'err';
     msg.textContent = d.ok ? '✅ ' + d.message : '❌ ' + d.error;
   } catch (e) {
     msg.className = 'err'; msg.textContent = '❌ เชื่อมต่อ server ไม่ได้: ' + e.message;
   } finally {
+    stopStatusPoll();
     finishProgress();
     await new Promise((r) => setTimeout(r, 450)); // ให้เห็น 100% สักนิดก่อนปิด
     $('overlay').classList.remove('show');

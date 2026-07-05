@@ -66,17 +66,28 @@ app.post('/api/shutdown', async (req, res) => {
   shutdown('WEB-SHUTDOWN');
 });
 
-// กันงานค้างล็อกทั้งระบบ: ถ้า fillBooking ค้าง (DNP ไม่ตอบ) ครอบด้วย timeout
-// ตั้ง 2 นาที — หน้างานกลุ่มใหญ่สุด ~รถตู้ 20 คน (~60 วิ) กรุ๊ปใหญ่จริงจองจากบ้าน + เผื่อเน็ตช้า/buffer
-// ถ้าเกินนี้ถือว่า DNP ค้างจริง → โยน error ปลดล็อกให้กดใหม่ได้ (ปรับค่าที่ค่าเดียวด้านล่าง)
-const BOOK_TIMEOUT_MS = 2 * 60 * 1000;
-function withTimeout(promise, ms) {
+// กันงานค้างล็อกทั้งระบบ: watchdog จับ "ค้างจริง" — ไม่มีความคืบหน้า (กรอกคนถัดไปไม่ขยับ) เกิน 2 นาที
+// ⚠️ เดิมเป็น timeout ตายตัว 2 นาทีครอบทั้งงาน → กลุ่มใหญ่ 30-40 คน (~3.5วิ/คน = เกิน 2 นาทีแน่)
+//    โดนตัดทั้งที่ยังกรอกอยู่ = อาการ "เด้งออก/รีเซตเอง" ที่ด่านเจอ (แก้ 5/7/69)
+//    เปลี่ยนเป็นนับจาก "ความคืบหน้าล่าสุด" แทน — จองกี่คนก็ไม่โดนตัดตราบใดที่ยังกรอกอยู่
+const BOOK_STALL_MS = Number(process.env.BOOK_STALL_MS) || 2 * 60 * 1000; // env ไว้ให้เทสย่นเวลา
+function withStallGuard(promise, ms, lastActivity) {
   let timer;
-  const timeout = new Promise((_, reject) => {
-    timer = setTimeout(() => reject(new Error('ระบบ DNP ไม่ตอบสนอง (เกิน 2 นาที) — ลองกดจองใหม่อีกครั้งนะคะ')), ms);
+  const guard = new Promise((_, reject) => {
+    timer = setInterval(() => {
+      if (Date.now() - lastActivity.at > ms) {
+        reject(new Error('ระบบ DNP ไม่ตอบสนอง (ค้างเกิน 2 นาที) — ลองกดจองใหม่อีกครั้งนะคะ'));
+      }
+    }, Math.min(5000, ms / 4));
   });
-  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+  return Promise.race([promise, guard]).finally(() => clearInterval(timer));
 }
+
+// ความคืบหน้าการจองที่กำลังวิ่งอยู่ — หน้ากาก poll ไปโชว์ "คนที่ 3/7" บน popup (จนท.เห็นว่าไม่ค้าง)
+// เก็บใบเดียวพอ (running กันจองซ้อนอยู่แล้ว). done+result ไว้ให้หน้ากากกู้ผลลัพธ์
+// กรณีจองนานจน Chrome ตัด fetch (~5 นาที) — งานฝั่งนี้ยังวิ่งต่อ หน้ากากสลับมารอผลทางนี้แทน
+let bookProgress = null;
+app.get('/api/book-progress', (req, res) => res.json(bookProgress || { idle: true }));
 
 let running = false;
 let pendingTabs = []; // คิวใบ "จริง" ที่ดักรอจ่ายค้างอยู่ (#5) — จองใบใหม่ไม่ปิดใบเก่า สูงสุด MAX_PENDING ใบ
@@ -115,11 +126,20 @@ app.post('/api/book', async (req, res) => {
   }
   let tab = null;
   const timing = createCollector({ dryRun: !!dryRun }); // จับเวลาแต่ละ step ลง timing.csv (วิเคราะห์คอขวด)
+  // progress ใบนี้ — startedAt ให้หน้ากากเช็กว่าเป็น "งานของตัวเอง" (ไม่ใช่ค้างจากใบก่อน)
+  // at = เวลาความคืบหน้าล่าสุด (watchdog ใช้จับค้าง), current/total = กรอกถึงคนที่เท่าไหร่
+  const totalTravelers = (params.travelers || []).reduce((s, t) => s + (t.count || 0), 0);
+  const progress = { startedAt, at: startedAt, current: 0, total: totalTravelers, stage: 'prepare', done: false, result: null };
+  bookProgress = progress;
+  const onProgress = (p) => Object.assign(progress, p, { at: Date.now() });
   try {
     const acqStart = Date.now();
     tab = await pool.acquire(params.date, console.log); // หยิบแท็บ warm (หรือ warm สดถ้าไม่มี)
     timing.mark('acquire', Date.now() - acqStart, ''); // warm hit = ~0, cold (pool ว่าง) = ~6000ms
-    const r = await withTimeout(fillBooking(tab.page, params, { dryRun: !!dryRun, timing }), BOOK_TIMEOUT_MS);
+    onProgress({ stage: 'fill' }); // acquire เสร็จ (cold อาจกิน ~7วิ) — รีเซ็ต watchdog ก่อนเริ่มกรอก
+    const r = await withStallGuard(
+      fillBooking(tab.page, params, { dryRun: !!dryRun, timing, onProgress }),
+      BOOK_STALL_MS, progress);
     // สำเร็จ — ใบใหม่ขึ้นจอแล้ว
     //  ทดสอบ: ปิดใบทดสอบเก่าทันที (ไม่เข้าคิว ไม่สะสม)
     //  จริง: ดักไว้ในคิว ไม่ปิดใบเก่า — จนท.กรอกใบถัดไปได้เลยระหว่างคนแรกจ่าย (#5)
@@ -133,9 +153,11 @@ app.post('/api/book', async (req, res) => {
       ? `โหมดทดสอบ: กรอกครบ ${r.total} คนแล้ว (ไม่กดต่อไป) — ดูในเบราว์เซอร์ที่เปิดขึ้นได้เลยค่ะ`
       : `กรอกครบ ${r.total} คน ถึงหน้าสรุปแล้ว — ตรวจยอดในเบราว์เซอร์ที่เปิดขึ้น แล้วกดจ่ายเองได้เลยค่ะ`;
     logUsage(params, { durationSec: elapsed(), ok: true, total: r.total, dryRun: !!dryRun });
+    Object.assign(progress, { done: true, result: { ok: true, total: r.total, message: msg } });
     res.json({ ok: true, total: r.total, message: msg });
   } catch (e) {
     logUsage(params, { durationSec: elapsed(), ok: false, error: e.message, dryRun: !!dryRun });
+    Object.assign(progress, { done: true, result: { ok: false, error: e.message } });
     res.json({ ok: false, error: e.message });
     // ปิดแท็บที่กรอกค้างครึ่งทาง ใน 1 นาที (ให้ดู error ก่อน) — ใบเก่าในคิวยังคงไว้ครบ
     if (tab?.browser) setTimeout(() => tab.browser.close().catch(() => {}), 60000);
