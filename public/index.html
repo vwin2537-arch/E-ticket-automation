@@ -76,7 +76,7 @@
   .pbar { margin-top: 18px; height: 8px; background: #e3ece7; border-radius: 99px; overflow: hidden; }
   .pbar > i { display: block; height: 100%; width: 0%;
               background: linear-gradient(90deg,#2e8b57,#52c98a);
-              border-radius: 99px; transition: width .25s ease; position: relative; }
+              border-radius: 99px; transition: width .8s ease; position: relative; }
   /* แถบเลื่อนแสง shimmer ให้ดูมีชีวิต */
   .pbar > i::after { content: ''; position: absolute; inset: 0;
               background: linear-gradient(90deg,transparent,rgba(255,255,255,.5),transparent);
@@ -146,6 +146,7 @@
     <div class="pbar"><i id="pbarFill"></i></div>
     <div class="pct" id="pbarPct">0%</div>
     <div class="pct" id="pbarStatus" style="margin-top:6px"></div>
+    <div class="pct" id="pbarTime" style="margin-top:4px;color:#778;font-weight:500"></div>
   </div>
 </div>
 <div class="card">
@@ -477,44 +478,56 @@ function recalc() {
   $('cntPeople').textContent = people;
   $('sum').textContent = fmt(sum);
 }
-// progress bar แบบ simulated — วิ่งเข้าใกล้ 90% นุ่มๆ (เร็วต้น ช้าปลาย) จนกว่า server จะตอบ
-let pTimer = null;
+// progress จริงจาก server (poll /api/book-progress ทุกวิ) — bar วิ่งตามงานที่ทำแล้วจริง
+// (เดิมเป็น % หลอกวิ่งเข้า 90 — กลุ่มใหญ่เห็น 90% ค้างนานเหมือนระบบแฮงค์) + ข้อความทุกขั้น + เวลานับ
+const STAGE_TEXT = {
+  prepare: 'กำลังเตรียมหน้าจอง...',
+  fill: 'กำลังเลือกรอบเวลา...',
+  time: 'กำลังเลือกรอบเวลา...',
+  vehicle: 'กำลังบันทึกข้อมูลยานพาหนะ...',
+};
+// แปลงขั้นตอน → % จริง: ช่วงกรอกรายชื่อคือของหนัก (~3.5วิ/คน) ให้กิน 12→95%
+function pctFor(p) {
+  if (p.stage === 'traveler' && p.total) return 12 + (p.current / p.total) * 83;
+  if (p.stage === 'summary') return 97;
+  if (p.stage === 'vehicle') return 10;
+  if (p.stage === 'fill' || p.stage === 'time') return 6;
+  return 3; // prepare (เตรียมแท็บ — จองวันอื่นที่ไม่ได้ warm ไว้จะอยู่ขั้นนี้ ~7-10 วิ)
+}
+function setBar(pct) {
+  $('pbarFill').style.width = pct.toFixed(1) + '%';
+  $('pbarPct').textContent = Math.round(pct) + '%';
+}
+let statTimer = null, clockTimer = null;
 function startProgress() {
-  let p = 0;
-  const fill = $('pbarFill'), pct = $('pbarPct');
-  fill.style.width = '0%'; pct.textContent = '0%';
-  clearInterval(pTimer);
-  pTimer = setInterval(() => {
-    p += (90 - p) * 0.06;          // asymptotic — ค่อยๆ เข้าใกล้ 90 ไม่มีวันถึง
-    fill.style.width = p.toFixed(1) + '%';
-    pct.textContent = Math.round(p) + '%';
-  }, 220);
-}
-function finishProgress() {
-  clearInterval(pTimer); pTimer = null;
-  $('pbarFill').style.width = '100%';
-  $('pbarPct').textContent = '100%';
-}
-// poll ความคืบหน้าจริงจาก server ทุกวิ — โชว์ "คนที่ 3/7" ให้ จนท.เห็นว่าระบบยังทำงาน ไม่ได้ค้าง
-// (progress bar เดิมเป็น simulated อย่างเดียว กลุ่มใหญ่ 30-40 คนใช้เวลา 2-3 นาที ดูเหมือนค้าง)
-let statTimer = null;
-function startStatusPoll() {
-  const el = $('pbarStatus');
-  el.textContent = '';
+  setBar(3);
+  $('pbarStatus').textContent = STAGE_TEXT.prepare; // ขึ้นทันทีตั้งแต่วินาทีแรก ไม่มีช่วงจอเงียบ
+  // เวลานับเรียลไทม์ 0:01, 0:02... ตั้งแต่ popup เด้งจนจบ
+  const t0 = Date.now();
+  const tick = () => {
+    const s = Math.floor((Date.now() - t0) / 1000);
+    $('pbarTime').textContent = `เวลาที่ใช้ ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')} นาที`;
+  };
+  clearInterval(clockTimer); tick(); clockTimer = setInterval(tick, 1000);
   clearInterval(statTimer);
   statTimer = setInterval(async () => {
     try {
       const p = await (await fetch('/api/book-progress')).json();
       if (p.idle || p.done) return;
-      if (p.stage === 'traveler' || p.stage === 'summary') {
-        el.textContent = p.stage === 'summary'
-          ? `บันทึกข้อมูลครบ ${p.total} รายการ — กำลังสรุปรายการ...`
-          : `กำลังบันทึกข้อมูลผู้เข้าใช้บริการ รายการที่ ${p.current + 1}/${p.total}`;
-      }
+      setBar(pctFor(p));
+      $('pbarStatus').textContent =
+        p.stage === 'traveler' ? `กำลังบันทึกข้อมูลผู้เข้าใช้บริการ รายการที่ ${p.current + 1}/${p.total}` :
+        p.stage === 'summary' ? `บันทึกข้อมูลครบ ${p.total} รายการ — กำลังสรุปรายการ...` :
+        (STAGE_TEXT[p.stage] || $('pbarStatus').textContent);
     } catch (e) {}
   }, 1000);
 }
-function stopStatusPoll() { clearInterval(statTimer); statTimer = null; $('pbarStatus').textContent = ''; }
+function finishProgress() {
+  clearInterval(statTimer); statTimer = null;
+  clearInterval(clockTimer); clockTimer = null; // หยุดนับ — ค้างเวลารวมไว้ให้เห็นตอน 100%
+  setBar(100);
+  $('pbarStatus').textContent = '';
+}
 // fetch หลุดระหว่างรอ (Chrome ตัด ~5 นาทีถ้าจองกลุ่มใหญ่มาก) แต่งานฝั่ง server ยังวิ่งต่อ
 // → รอผลผ่าน /api/book-progress แทน (เช็ก startedAt กันหยิบผลใบเก่า) สูงสุด 15 นาที
 async function waitResultViaPoll(t0) {
@@ -537,7 +550,6 @@ $('go').onclick = async () => {
   $('go').disabled = true; $('go').textContent = '⏳ มุกกำลังกรอกให้...';
   $('overlay').classList.add('show');
   startProgress();
-  startStatusPoll();
   msg.style.display = 'none';
   const t0 = Date.now(); // ไว้เช็กว่า progress ที่ poll เจอเป็นงานใบนี้จริง (ไม่ใช่ค้างจากใบก่อน)
   try {
@@ -562,7 +574,6 @@ $('go').onclick = async () => {
   } catch (e) {
     msg.className = 'err'; msg.textContent = '❌ เชื่อมต่อ server ไม่ได้: ' + e.message;
   } finally {
-    stopStatusPoll();
     finishProgress();
     await new Promise((r) => setTimeout(r, 450)); // ให้เห็น 100% สักนิดก่อนปิด
     $('overlay').classList.remove('show');

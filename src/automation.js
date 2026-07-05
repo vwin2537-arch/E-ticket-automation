@@ -272,6 +272,7 @@ async function fillBooking(page, params, opts = {}) {
 
   try {
     // 3) เลือกเวลา
+    prog({ stage: 'time' });
     log(`Selecting time slot ${params.timeSlot}...`);
     try {
       await T('time_slot', '', () => selectOption(page, 'เลือกเวลา', 0, params.timeSlot));
@@ -283,6 +284,7 @@ async function fillBooking(page, params, opts = {}) {
     // 4) ยานพาหนะ — กรอกคันปัจจุบันครบก่อน ค่อยกด "เพิ่มประเภทยานพาหนะ" คันถัดไป
     const vehicles = params.vehicles || [];
     if (vehicles.length === 0) throw new Error('ยังไม่ได้เลือกยานพาหนะเลยค่ะ');
+    prog({ stage: 'vehicle' });
     log(`Vehicles: ${vehicles.length}`);
     for (let i = 0; i < vehicles.length; i++) {
       if (i > 0) {
