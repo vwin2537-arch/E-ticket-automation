@@ -56,7 +56,8 @@ git clone https://github.com/vwin2537-arch/E-ticket-automation.git
   + `slots` รอบเวลาจริงจาก DNP — ทั้งคู่ส่งผ่าน `status()`. acquire ทิ้งแท็บไม่ตรง targetDate
 - `src/datepicker.js` — เลือกวันใน Element UI date picker
 - `src/names.js` — generate ชื่อมั่วๆ (ระบบไม่เช็กชื่อจริง)
-- `src/server.js` — Express + API `/api/config`, `/api/book`, `/api/login-status`, `/api/pool-status` (สถานะ warm: ready/warming/size/today), `/api/shutdown` (ปุ่มปิด: ส่ง log→shutdown→exit 0; บล็อกถ้ามี pending)
+- `src/server.js` — Express + API `/api/config`, `/api/book`, `/api/book-progress` (ความคืบหน้าจองที่วิ่งอยู่: stage/current/total/done/result — หน้ากาก poll โชว์ x/N + กู้ผลถ้า fetch หลุด), `/api/login-status`, `/api/pool-status` (สถานะ warm: ready/warming/size/today), `/api/shutdown` (ปุ่มปิด: ส่ง log→shutdown→exit 0; บล็อกถ้ามี pending)
+  ⚠️ **จองกลุ่มใหญ่ห้ามใช้ timeout ตายตัวครอบทั้งงาน** (5/7/69): เดิม `BOOK_TIMEOUT_MS` fixed 2 นาที → 30-40 คน (~3.5วิ/คน) โดนตัดกลางคัน = "เด้งออก/รีเซตเอง" ที่ด่าน. แก้เป็น `withStallGuard` **watchdog นับจาก progress ล่าสุด** (`progress.at` อัปเดตทุกครั้งที่ `onProgress`) — จองกี่คนก็ไม่โดนตัดถ้ายังคืบหน้า ตัดเฉพาะค้างจริงเกิน `BOOK_STALL_MS`(2นาที). อย่า revert กลับ fixed timeout
   + `pendingTabs[]` คิวใบจริงดักรอจ่าย (#5) + `prunePending()` เอาใบที่ จนท.ปิดหน้าต่างแล้วออกจากคิว
   + `shutdown()` จับ SIGINT/SIGTERM ปิด browser ทั้งหมด (pool+pendingTabs+lastDryTab) ก่อนตาย กัน chromium orphan
 - `src/filelog.js` — `install()` ดักทุก `console.log/error` + `uncaughtException/unhandledRejection` เขียนลง `logs/server.log`
@@ -80,7 +81,7 @@ git clone https://github.com/vwin2537-arch/E-ticket-automation.git
   in-memory + `setReceiptWidth()` → `injectReceiptButton` ฉีด `window.__DNP_RECEIPT_WIDTH` → `receipt-core` render ตามขนาด
   (parametrize `@page`/width/QR/ฟอนต์; 57mm: QR 38mm / 80mm: QR 42mm). ปริ้นไป **default printer** (silent) — จนท.ตั้ง default ให้ตรงขนาดเอง
   ⚠️ **เป็นสำเนา** — แก้ logic ปริ้นที่ `~/dnp-eticket-receipt` แล้วก๊อปทับโฟลเดอร์นี้ (ไม่งั้น 2 ที่ไม่ตรงกัน)
-- `public/index.html` — หน้ากาก UI (รอบเวลาฉลาด + ไฟสถานะ login + แถบสถานะ warm `1/3→3/3` ตามวันที่ + progress bar ใน popup)
+- `public/index.html` — หน้ากาก UI (รอบเวลาฉลาด + ไฟสถานะ login + แถบสถานะ warm `1/3→3/3` ตามวันที่ + popup จอง: **progress bar % จริง** (poll `/api/book-progress`, traveler=12→95%) + ข้อความทุกขั้น (เตรียม/เวลา/รถ/รายการที่ x/N/สรุป) + เวลานับ 0:0X)
 - `scripts/login.js` — login + save session
 - `auth/storageState.json` — session (อย่า commit, อย่าแชร์)
 - `*-Windows.bat` + `คู่มือ-Windows.md` — สำหรับรันบน Windows (ดูหมายเหตุล่าง)

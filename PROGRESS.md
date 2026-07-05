@@ -1,6 +1,17 @@
 # PROGRESS.md — DNP E-Ticket Auto-fill
 
-## สถานะ: 🟢 ใช้งานได้ + ปุ่มปิด/กู้ระบบ + ส่ง log ขึ้น Drive + ปุ่มอัพเดท git — อัพเดทล่าสุด 17/6/69
+## สถานะ: 🟢 ใช้งานได้ + ปุ่มปิด/กู้ระบบ + ส่ง log ขึ้น Drive + ปุ่มอัพเดท git — อัพเดทล่าสุด 5/7/69
+
+### 🆕 (5/7/69) แก้จองกลุ่มใหญ่เด้งออก + popup โชว์สถานะจริง x/N + % จริง + เวลานับ
+**โจทย์ (เจอจาก user จริงที่ด่าน):** จอง 30-40 คน → เกิน 2 นาที → ระบบ "เด้งออก/รีเซตเอง" จองไม่ได้ + popup ดูเหมือนค้าง
+- **root cause:** `server.js` `BOOK_TIMEOUT_MS` fixed 2 นาทีครอบทั้งงาน — 1 คน ~3.5วิ → 35 คน ≈ เกิน 2 นาที = โดนตัดกลางคัน
+- **แก้:** เปลี่ยนเป็น **watchdog จับ "ค้างจริง"** (`withStallGuard` นับจาก progress ล่าสุด) → จองกี่คนก็ไม่โดนตัดถ้ายังคืบหน้า
+  → CLAUDE.md server.js note. `BOOK_STALL_MS` (env override ได้ให้เทสย่นเวลา)
+- **progress จริง:** `fillBooking(onProgress)` รายงานทุกขั้น (time/vehicle/traveler i/N/summary) → `/api/book-progress`
+  หน้ากาก poll ทุกวิ → **bar เป็น % จริง** (traveler = 12→95%, เลิก 90%-หลอก-ค้าง) + ข้อความทุกขั้นตั้งแต่วิแรก + **เวลานับ 0:0X**
+- **fetch หลุด (Chrome ตัด ~5 นาทีงานใหญ่มาก) → กู้ผลผ่าน `/api/book-progress`** (เช็ก startedAt กันหยิบใบเก่า) ไม่ขึ้น error หลอก
+- ✅ เทส: `scripts/test-progress.js` (mock) 9/9 — watchdog ไม่ตัดงานที่คืบหน้า, ตัดงานค้างจริง, progress ไหล + Playwright UI test เห็น bar/สถานะ/เวลาวิ่งจริง. เดิม test-pipeline 18/18 ยังผ่าน. commit `2484aa1`
+- ⏳ **รอเทส Windows ด่านจริง:** จอง 30-40 คนผ่านตลอด + เลข x/N + เวลาวิ่งตามจริง
 
 ### 🆕 (17/6/69) วิเคราะห์ความเร็ว + timing instrumentation (วัดก่อน optimize)
 **โจทย์:** อยากให้บอทกรอกไวขึ้น — วัด breakdown จริงก่อน ไม่เดา
