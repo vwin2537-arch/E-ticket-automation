@@ -173,6 +173,22 @@ function launchBrowser(headless = false) {
   });
 }
 
+// เข้าหน้าเว็บพร้อม retry — เน็ตที่ด่านวูบบ่อย (DNS/TCP timeout สลับกันเป็นวินาที)
+// goto เดิมไม่มี retry → วูบครั้งเดียวกลายเป็น "ค้าง". ลองใหม่สูงสุด 3 รอบ backoff (1.5s,3s)
+// เน็ตกระตุกชั่วขณะมักผ่านตั้งแต่รอบ 2 — ล้มจริงทั้ง 3 รอบค่อยโยน error เดิมออกไป
+async function gotoWithRetry(page, url, opts = {}, tries = 3) {
+  let lastErr;
+  for (let i = 0; i < tries; i++) {
+    try {
+      return await page.goto(url, opts);
+    } catch (e) {
+      lastErr = e;
+      if (i < tries - 1) await page.waitForTimeout(1500 * (i + 1));
+    }
+  }
+  throw lastErr;
+}
+
 // อ่านรอบเวลาจริงจาก DNP (หลังเลือกวันแล้ว) — คืน [{ text, disabled }] ตามที่ระบบโชว์
 // DNP ไม่ได้เอารอบออกจาก dropdown แต่ทำเป็น is-disabled (สีเทาคลิกไม่ติด) เมื่อใกล้/เลยเวลาปิด
 // หน้ากากเอาค่านี้ไปโชว์เฉพาะรอบที่เปิดจริง → ไม่ต้องเดา buffer เวลาอีก (single source = DNP เอง)
@@ -229,7 +245,7 @@ async function warmTab(date, opts = {}) {
   try {
     // 1) เข้าหน้าแรก → คลิกการ์ดอุทยาน (ต้องผ่าน path นี้ ไม่งั้นโควต้า=0)
     log('Opening home page...');
-    await page.goto(PARK.homeUrl, { waitUntil: 'domcontentloaded' });
+    await gotoWithRetry(page, PARK.homeUrl, { waitUntil: 'domcontentloaded' });
     // รอจน login พร้อม (เจอ "ออกจากระบบ") แทนการรอเผื่อเวลา
     const loggedIn = await page.getByText('ออกจากระบบ').first()
       .waitFor({ state: 'visible', timeout: 10000 }).then(() => true).catch(() => false);
@@ -392,7 +408,10 @@ async function runBooking(params, opts = {}) {
 
 /**
  * checkLogin() — เช็กเงียบๆ (headless) ว่า session ยังเข้าระบบ DNP อยู่ไหม
- * คืน true ถ้าเจอปุ่ม "ออกจากระบบ" ในหน้าแรก, false ถ้าหลุด/ไม่มี session
+ * คืนสถานะ 3 แบบ (แยก "เน็ตมีปัญหา" ออกจาก "ออกจากระบบจริง" — กันแบนเนอร์หลอกที่ด่าน):
+ *   'in'       = เจอปุ่ม "ออกจากระบบ" ในหน้าแรก → login อยู่
+ *   'out'      = โหลดหน้าได้ แต่ไม่เจอ = session หลุด/ไม่มี → ต้อง login ใหม่
+ *   'neterror' = โหลดหน้า DNP ไม่ขึ้น (timeout/เน็ตหลุด) → ตัดสิน login ไม่ได้ ไม่ใช่ logout
  */
 async function checkLogin() {
   let browser;
@@ -400,11 +419,16 @@ async function checkLogin() {
     browser = await chromium.launch({ headless: true });
     const context = await browser.newContext({ storageState: STATE_PATH });
     const page = await context.newPage();
-    await page.goto(PARK.homeUrl, { waitUntil: 'domcontentloaded' });
-    return await page.getByText('ออกจากระบบ').first()
+    try {
+      await gotoWithRetry(page, PARK.homeUrl, { waitUntil: 'domcontentloaded' });
+    } catch {
+      return 'neterror'; // page.goto ล้มครบ 3 รอบ = โหลดหน้า DNP ไม่ขึ้น (เน็ต) — ไม่ใช่ session หลุด
+    }
+    const inside = await page.getByText('ออกจากระบบ').first()
       .waitFor({ state: 'visible', timeout: 12000 }).then(() => true).catch(() => false);
+    return inside ? 'in' : 'out';
   } catch {
-    return false; // ไม่มีไฟล์ session / เปิดไม่ได้ = ถือว่ายังไม่ login
+    return 'out'; // ไม่มีไฟล์ session / เปิด browser ไม่ได้ = ถือว่ายังไม่ login
   } finally {
     await browser?.close().catch(() => {});
   }

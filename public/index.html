@@ -53,6 +53,7 @@
   .lstat.checking { background: #eef1f4; color: #667; }
   .lstat.ok  { background: #e3f3ea; color: #1d6e42; }
   .lstat.bad { background: #fbe6e6; color: #a33; }
+  .lstat.warn { background: #fff3d9; color: #8a5a00; }
   .lstat .recheck { margin-left: auto; border: none; background: rgba(0,0,0,.07);
                     border-radius: 7px; padding: 4px 10px; cursor: pointer; font-size: 12px; color: inherit; }
   /* แถบสถานะ warm pool — บอกว่าอุ่นแท็บไว้กี่ใบ (จองวันนี้ = ทันที) */
@@ -287,7 +288,10 @@ function renderWarm() {
   }
   if (lastError) {
     box.className = 'warm';
-    box.innerHTML = '⚠️ อุ่นเครื่องไม่สำเร็จ — ' + lastError;
+    // แปล error เน็ต (timeout/หลุด/DNS) เป็นข้อความชาวบ้าน — ไม่โชว์ page.goto ดิบๆ ที่ด่านงง
+    box.innerHTML = /timeout|net::|ERR_/i.test(lastError)
+      ? '📡 เน็ตมีปัญหา — โหลดหน้า DNP ไม่ขึ้น เช็กเน็ต/เสียบสาย LAN แล้วลองใหม่'
+      : '⚠️ อุ่นเครื่องไม่สำเร็จ — ' + lastError;
     return;
   }
   const dots = '●'.repeat(ready) + '○'.repeat(Math.max(0, size - ready));
@@ -341,11 +345,16 @@ async function checkLoginStatus(force = false) {
   box.innerHTML = '⏳ กำลังเช็กสถานะเข้าระบบ DNP...';
   $('go').disabled = true;
   try {
-    const { loggedIn } = await (await fetch('/api/login-status' + (force ? '?force=1' : ''))).json();
-    if (loggedIn) {
+    const { status } = await (await fetch('/api/login-status' + (force ? '?force=1' : ''))).json();
+    if (status === 'in') {
       box.className = 'lstat ok';
       box.innerHTML = '✅ เข้าระบบ DNP อยู่ — พร้อมจอง <button class="recheck" onclick="checkLoginStatus(true)">เช็กซ้ำ</button>';
       loginOK = true;
+    } else if (status === 'neterror') {
+      // โหลดหน้า DNP ไม่ขึ้น (เน็ต) — ไม่ใช่ออกจากระบบ อย่าบล็อกปุ่มจอง (session น่าจะยังดี)
+      box.className = 'lstat warn';
+      box.innerHTML = '📡 เน็ตมีปัญหา — โหลดหน้า DNP ไม่ขึ้น (ไม่ใช่ออกจากระบบ) เช็กเน็ต/เสียบสาย LAN แล้วกดเช็กซ้ำ <button class="recheck" onclick="checkLoginStatus(true)">เช็กซ้ำ</button>';
+      loginOK = null;
     } else {
       box.className = 'lstat bad';
       box.innerHTML = '❌ ออกจากระบบแล้ว — ดับเบิลคลิก <b>เข้าระบบ DNP</b> ก่อนนะคะ <button class="recheck" onclick="checkLoginStatus(true)">เช็กซ้ำ</button>';

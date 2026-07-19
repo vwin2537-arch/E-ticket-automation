@@ -36,11 +36,13 @@ const LOGIN_TTL = 5 * 60 * 1000;
 app.get('/api/login-status', async (req, res) => {
   const fresh = loginCache.value !== null && Date.now() - loginCache.at < LOGIN_TTL;
   if (req.query.force !== '1' && fresh) {
-    return res.json({ loggedIn: loginCache.value, cached: true });
+    return res.json({ status: loginCache.value, cached: true });
   }
-  const loggedIn = await checkLogin();
-  loginCache = { value: loggedIn, at: Date.now() };
-  res.json({ loggedIn });
+  const status = await checkLogin(); // 'in' | 'out' | 'neterror'
+  // cache เฉพาะผลที่แน่นอน (in/out) — 'neterror' เป็นชั่วคราว อย่า cache ไว้ 5 นาที
+  // ไม่งั้นเน็ตกลับมาแล้วยังค้างขึ้น "เน็ตมีปัญหา" จนกว่า cache หมดอายุ
+  if (status !== 'neterror') loginCache = { value: status, at: Date.now() };
+  res.json({ status });
 });
 
 // สถานะ warm pool ให้หน้ากากโชว์ว่าอุ่นแท็บไว้กี่ใบแล้ว (1/3, 2/3, 3/3)
