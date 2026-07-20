@@ -1,6 +1,18 @@
 # PROGRESS.md — DNP E-Ticket Auto-fill
 
-## สถานะ: 🟢 ใช้งานได้ + ปุ่มปิด/กู้ระบบ + ส่ง log ขึ้น Drive + ปุ่มอัพเดท git — อัพเดทล่าสุด 5/7/69
+## สถานะ: 🟢 ใช้งานได้ + ทน "เน็ตด่านวูบ" (goto retry + pool=1) — อัพเดทล่าสุด 20/7/69
+
+### 🆕 (20/7/69) เครื่องด่านบางเครื่องเน็ตวูบ → บอทค้าง + แบนเนอร์ "ออกจากระบบ" หลอก
+**โจทย์ (log จริง DESKTOP-8VP1TLN):** เครื่องนึงเชื่อม DNP ยากมาก (อีกเครื่องปกติ) — Chrome ธรรมดาเข้าได้ แต่บอทค้าง
+- **root cause = เน็ตวูบ ไม่ใช่โค้ด/ไม่ใช่เครื่องพัง:** log ฟ้องสำเร็จ↔ล้ม **สลับกันในนาทีเดียว** (52 สำเร็จ + 47 ล้มวันนี้)
+  error เป็น `Timeout`/`ERR_CONNECTION_TIMED_OUT`/`ERR_NAME_NOT_RESOLVED`/`ERR_NETWORK_CHANGED` = network layer วูบ
+  → ถ้าเป็น config Playwright (proxy/AV) ต้องเจ๊งตลอด ไม่มีทางสำเร็จ 52 ครั้ง. Chrome รอด = เปิดตอนเน็ต "up"
+- **แก้ (ทำให้ทนเน็ตแย่ ไม่ใช่แก้ config):** ดู CLAUDE.md note ⚡ "ทนเน็ตวูบ"
+  - `gotoWithRetry()` เข้าหน้า DNP ลองใหม่ 3 รอบ backoff (warmTab + checkLogin) — วูบครั้งเดียวไม่กลายเป็นค้าง
+  - **POOL_SIZE 3→1** ยิงเน็ตเบา กิน RAM น้อย (แลก: กรอกผิดต้องทิ้งใบ warm สด ~6วิ)
+  - `checkLogin` แยก 3 สถานะ in/out/**neterror** → หน้ากากขึ้น "📡 เน็ตมีปัญหา" แทน "❌ ออกจากระบบ" (หลอก) + ไม่บล็อกปุ่มจอง
+- ✅ เทส: retry ลอง 3 รอบจริงแล้วโยน / goto ผ่านรอบแรกไม่มี penalty (checkLogin สด→`out`). commit `4920951`
+- ⏳ **รอเทสเครื่องด่านจริง:** อัปเดต **เครื่องมีปัญหาเครื่องเดียว** (`4-UPDATE-Windows.bat`) — เครื่องปกติ **ไม่ต้องกด = ไม่กระทบ**
 
 ### 🆕 (5/7/69) แก้จองกลุ่มใหญ่เด้งออก + popup โชว์สถานะจริง x/N + % จริง + เวลานับ
 **โจทย์ (เจอจาก user จริงที่ด่าน):** จอง 30-40 คน → เกิน 2 นาที → ระบบ "เด้งออก/รีเซตเอง" จองไม่ได้ + popup ดูเหมือนค้าง
@@ -64,11 +76,6 @@
 - **🔐 url+secret แยกไป `src/log-upload.local.js` (gitignore)** — repo เป็น public ห้ามให้ secret หลุด; config.js `require` override ถ้ามี. ก๊อปไปเครื่องด่านด้วย (เหมือน auth/)
 - ✅ **เทสครบ:** filelog เขียนไฟล์, `/api/shutdown` → ok → exit 0, deploy Apps Script + upload จริง `200` → **verify ผ่าน MCP เห็นไฟล์ขึ้น Drive จริง** (โฟลเดอร์ Erawan-Logs แยกตามชื่อเครื่อง)
 - ⏳ **รอ:** เทส `.bat` บน Windows ด่านจริง (taskkill/PowerShell กวาด playwright + หน้าต่างปิดเองตอนกดปิด) + ก๊อป `log-upload.local.js` ไปเครื่องด่าน
-
-### 🆕 (12/6/69) ใบเสร็จเพิ่มตารางสรุปค่าบริการ (กันไกด์โกงหัว) — sync จาก dnp-eticket-receipt
-`receipt-core.js` (สำเนาใน `src/receipt-inject/`) เพิ่ม `getOrder()` scrape กล่อง "สรุปค่าบริการ" บนหน้าตั๋ว →
-ใบเสร็จโชว์ตารางแยกประเภท+จำนวน+ราคา+ยอดรวม แบบใบเสร็จห้างฯ. **แก้ที่ต้นทาง `~/dnp-eticket-receipt` แล้วก๊อปทับ**
-(รายละเอียด+selector อยู่ PROGRESS/CLAUDE ของโปรเจคนั้น). ✅ เทส jsdom ผ่าน. ⏳ รอเทส end-to-end: ปุ่มฉีดในหน้าตั๋วสด → ปริ้นออกมามีตาราง
 
 > 📦 ประวัติงาน + บทเรียนเก่า (setup → 3/6/69) ย้ายไป [PROGRESS_ARCHIVE.md](PROGRESS_ARCHIVE.md)
 > 🔧 technical detail/กฎทั้งหมดอยู่ [CLAUDE.md](CLAUDE.md) — ไฟล์นี้เก็บแค่ timeline + สถานะ
