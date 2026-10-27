@@ -66,6 +66,7 @@ git clone https://github.com/vwin2537-arch/E-ticket-automation.git
   แยกโฟลเดอร์ตามชื่อเครื่อง (os.hostname) รองรับหลายด่าน. เรียกจาก `/api/shutdown` + `RESET-Windows.bat` (CLI). ⚠️ ไม่ส่ง `server-live.log` เดิม (ขยะ)
 - `src/log-upload.local.js` — **url+secret ส่ง log (gitignore, repo public ห้ามหลุด)** — config.js `require` override ถ้ามี. ก๊อปไปเครื่องด่านด้วย
 - `apps-script/Code.gs` + `README-deploy.md` — Apps Script web app รับ log เขียนลง Drive (พี่วิน deploy เอง ตั้ง FOLDER_ID+SECRET → URL ใส่ `config.js`)
+  + `mode=append` (27/10/69) รับ log แอปมือถือ `dnp-eticket-mobile` → ต่อท้าย `mobile-<รหัส>/<วันที่>.csv` (จำกัด machine `mobile-*`/ชื่อไฟล์วันที่/≤1MB) · ทาง PC เดิมไม่เปลี่ยน · redeploy = Manage deployments → ✏️ → **New version** (ห้าม New deployment = URL ใหม่)
 - `src/timing.js` — จับเวลาแต่ละ step การกรอกลง `logs/timing.csv` (long format 1แถว/step, group `bookingId`) วิเคราะห์คอขวด
   `createCollector()` → ส่งเข้า `fillBooking(opts.timing)` (helper `T()` no-op ถ้าไม่ส่ง) + server วัด `acquire`. gitignore + ส่ง Drive
 - `scripts/diag-selectopt.js` — debug `selectOption` แยกเวลา phase + นับ attempt + ดู network (อ่านอย่างเดียว ไม่จอง) `node scripts/diag-selectopt.js [YYYY-MM-DD]`
