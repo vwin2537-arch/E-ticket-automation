@@ -10,6 +10,21 @@
     return m ? m[1] : "";
   }
 
+  // เลข Transection No ในหน้าตั๋ว (ตรงกับระบบหลังบ้านที่สรุปยอดรายวัน — เลข ticketDetail ไม่ตรง)
+  // DNP สะกด "Transection" → รับทั้ง a/e · เลขอาจอยู่ tag เดียวกับป้าย หรือ tag ถัดไป
+  function getTransactionNo(doc) {
+    const label = /Trans[ae]ction\s*No/i;
+    const num = /^[A-Za-z0-9-]{6,}$/;
+    const el = [...doc.querySelectorAll("body *")].reverse().find((e) => label.test(e.textContent)); // ตัวในสุด
+    if (!el) return "";
+    const own = txt(el).replace(/.*Trans[ae]ction\s*No\.?\s*:?\s*/i, "");
+    if (num.test(own)) return own;
+    const next = txt(el.nextElementSibling);
+    if (num.test(next)) return next;
+    const m = txt(el.parentElement).match(/Trans[ae]ction\s*No\.?\s*:?\s*([A-Za-z0-9-]{6,})/i);
+    return m ? m[1] : "";
+  }
+
   function getSummary(doc) {
     const valueOf = (iconClass) => {
       const icon = doc.querySelector("." + iconClass);
@@ -97,6 +112,7 @@
   function collect(doc, loc) {
     return {
       ticketNo: getTicketNo(loc),
+      txNo: getTransactionNo(doc),
       summary: getSummary(doc),
       order: getOrder(doc),
       blocks: getQRBlocks(doc),
@@ -156,9 +172,9 @@
       )
       .join('<hr class="dash">');
 
-    const headLine = [data.ticketNo ? "เลขที่ " + esc(data.ticketNo) : "", esc(bookingDate)]
-      .filter(Boolean)
-      .join("  •  ");
+    // เลขที่ = Transection No (พี่วินขอ 27/10/69) — ยาว 16 หลัก แยกบรรทัด · ไม่เจอ (ยังไม่จ่าย) ใช้รหัสจองแทน ระบุชื่อให้ไม่สับสน
+    const noLine = data.txNo ? "เลขที่ " + esc(data.txNo) : data.ticketNo ? "รหัสจอง " + esc(data.ticketNo) : "";
+    const headLine = [noLine, esc(bookingDate)].filter(Boolean).join("<br>");
 
     // ขนาดกระดาษ: อ่านจาก window.__DNP_RECEIPT_WIDTH (autofill ฉีดตามที่เลือกตอนเปิดระบบ) — default 80mm
     const W = (typeof window !== "undefined" && Number(window.__DNP_RECEIPT_WIDTH)) || 80;
