@@ -147,3 +147,71 @@ launch flag `--window-position=-32000,-32000`:** (1) `revealWindow` ตั้ง
   connection ไว้ → ปิดหน้าต่างแล้ว process ยังไม่ตาย isConnected ค้าง true คิวไม่มีวันว่าง. ใช้ `!page.isClosed()`
   เป็นหลัก (isConnected เป็น backup เผื่อ crash) + prune ต้อง `browser.close()` ใบที่หลุดด้วย กัน orphan สะสม Dock.
   พิสูจน์ `scripts/test-window-close.js` (เปิด browser เปล่า ไม่แตะ DNP). เทส live: 3 ใบเต็มคิว→ใบ4 error→ปิดหน้าต่าง pending 3→2→0
+
+---
+## ย้ายจาก PROGRESS.md เมื่อ 28/10/69 (เนื้อหา 7/6–13/6/69)
+
+### 🆕 (13/6/69) เลิก zip → ปุ่มอัพเดท `4-UPDATE-Windows.bat` (git pull)
+**โจทย์:** เดิมอัพเดท = แตก zip เป็นโฟลเดอร์ใหม่ → log/auth อยู่คนละโฟลเดอร์ ต้องคอยก๊อปมือ ไม่มาตรฐาน
+- **แก้:** ปุ่มเดียวดับเบิลคลิก — ตรวจเองว่าครั้งแรก (git init + remote + `reset --hard origin/main`) หรืออัพเดทปกติ (`git pull`)
+  + `npm install` เฉพาะตอน package เปลี่ยน. **logs/auth gitignore อยู่แล้ว → ไม่ถูกแตะ log ต่อเนื่อง ไม่ต้องก๊อป**
+- เช็ค Git ในเครื่อง ไม่มี → บอกลิงก์ git-scm.com ลงครั้งเดียว (เหมือน Node.js). repo เป็น public → pull ไม่ต้อง login
+- อัพเดท README-Windows ส่วนที่ 3 + CLAUDE.md ส่วน GitHub
+- ⏳ **รอ:** ลง Git for Windows ที่ด่าน + วางไฟล์ปุ่มลงโฟลเดอร์เดิมครั้งเดียว + ดับเบิลคลิกทดสอบครั้งแรกจริง
+
+### 🆕 (13/6/69) ปุ่มปิดการทำงาน + กู้ระบบ + ส่ง log ขึ้น Drive อัตโนมัติ
+**โจทย์:** จนท. งงแล้วเผลอปิดหน้าต่างดำ (command line) → server ตาย Chrome บอทค้างเต็มจอ ระบบเออเรอ + พี่วินอยากดูบัคทางไกล
+- **เคส A (หน้าต่างยังเปิด): ปุ่ม "ปิดการทำงาน" บนหน้ากาก** → confirm modal → `POST /api/shutdown` →
+  ส่ง log ขึ้น Drive → เก็บ browser (`shutdown()` เดิม) → `process.exit(0)`. แก้ `2-START.bat` เป็น `if errorlevel 1 pause`
+  (exit 0 = ปิดปกติ → หน้าต่างปิดเอง / crash = ค้างให้เห็น error) — แทน Ctrl+C. มีใบ pending ค้าง = บล็อก ไม่ปิด (กันเงินหาย)
+- **เคส B (เผลอปิดหน้าต่าง Chrome ค้าง): `RESET-Windows.bat`** ดับเบิลคลิกเดียว → kill server เก่า(port) +
+  กวาด Chrome **เฉพาะ playwright** (PowerShell filter `ms-playwright` ไม่แตะ Chrome ปกติ) + ส่ง log + เปิดระบบใหม่ (+ `กู้ระบบเอราวัณ.command` ไว้เทส Mac)
+- **ส่ง log → Google Drive (Apps Script):** `src/filelog.js` ดักทุก console+crash เขียน `logs/server.log` อัตโนมัติ
+  (เดิม console หายกับหน้าต่างดำ) → `scripts/upload-logs.js` POST `usage.csv`+`server.log` ไป Apps Script web app
+  (best-effort 10วิ, แยกโฟลเดอร์ตามชื่อเครื่อง รองรับหลายด่าน). **ไม่ส่ง `server-live.log` เดิม** (ขยะ ไม่เคยถูกเขียนอัตโนมัติ)
+- **🔐 url+secret แยกไป `src/log-upload.local.js` (gitignore)** — repo เป็น public ห้ามให้ secret หลุด; config.js `require` override ถ้ามี. ก๊อปไปเครื่องด่านด้วย (เหมือน auth/)
+- ✅ **เทสครบ:** filelog เขียนไฟล์, `/api/shutdown` → ok → exit 0, deploy Apps Script + upload จริง `200` → **verify ผ่าน MCP เห็นไฟล์ขึ้น Drive จริง** (โฟลเดอร์ Erawan-Logs แยกตามชื่อเครื่อง)
+- ⏳ **รอ:** เทส `.bat` บน Windows ด่านจริง (taskkill/PowerShell กวาด playwright + หน้าต่างปิดเองตอนกดปิด) + ก๊อป `log-upload.local.js` ไปเครื่องด่าน
+
+> 📦 ประวัติงาน + บทเรียนเก่า (setup → 3/6/69) ย้ายไป [PROGRESS_ARCHIVE.md](PROGRESS_ARCHIVE.md)
+> 🔧 technical detail/กฎทั้งหมดอยู่ [CLAUDE.md](CLAUDE.md) — ไฟล์นี้เก็บแค่ timeline + สถานะ
+
+
+### 🆕 (7/6/69) แก้บั๊ก "บอทไม่กรอก หยุดแค่เลือกวัน+เวลา" — รอบเวลา data-driven (เลิกเดา buffer)
+อาการ (อาการเดิมกลับมา): กดยืนยัน 15:12 → บอทเลือกวันได้ เลือกเวลาไม่ได้ ไม่ไปต่อ. **หลักฐาน:** shot-error เห็น
+dropdown เวลาเปิดค้าง มีรอบ "11:45-15:30" โชว์อยู่ แต่ usage.csv ว่า "เลือกรอบไม่ได้". **root cause (ยืนยันด้วย
+`scripts/diag-timeslot.js` อ่านสด):** DNP **ไม่เอารอบออกจาก dropdown** แต่ทำเป็น `is-disabled` (สีเทาคลิกไม่ติด)
+ก่อนเวลาปิดจริง — รอบบ่ายโดน disable ตั้งแต่ ~15:12 (ก่อน 15:30 ตั้ง 18 นาที > buffer 10) → หน้ากากยังเสนอ →
+บอทคลิก disabled → Vue ไม่ commit → verify ไม่ผ่าน → retry 3 ครั้ง → ยอมแพ้ (dash/format **ไม่ใช่ปัญหา**).
+**แก้แบบไม่เดาเวลา (single source = DNP เอง):** (1) `automation.js` `readTimeSlots()` อ่าน disabled/enabled จริง
+ตอน warm → ติดมากับ tab; `selectOption` เจอ `is-disabled` ฟ้องทันที (0.11วิ แทน ~3วิ retry). (2) `pool.js` เก็บ
+`slots`+`targetDate` ส่งผ่าน status; วันนี้ปิดทุกรอบ → เด้งอุ่น "พรุ่งนี้" เอง. (3) `server.js` /api/pool-status ส่ง
+`slots`+`bookDate` จาก pool. (4) `index.html` โชว์รอบตาม slots จริง (เลิกใช้ buffer) + snap วันตาม pool อัตโนมัติ.
+✅ เทส: readTimeSlots (วันนี้ปิดคู่/พรุ่งนี้เปิดคู่) + pool เด้งพรุ่งนี้ + selectOption ฟ้อง 0.11วิ + server path จริง.
+commit `d0270d8` push แล้ว + อัพ zip Windows. ⏳ รอเทส Windows จริง. → lesson
+
+### 🆕 (7/6/69 #2) หน้าสรุปเด้งหน้าจอ + มีปุ่มปริ้นในหน้า Playwright
+2 ปัญหาที่เครื่องด่าน ต้นเหตุเดียวกัน (หน้าสรุป/QR อยู่ใน Chromium ของ Playwright = คนละตัวกับ Chrome ปกติ):
+1) **หน้าสรุปหลบหลังหน้ากาก จนท.ไม่เห็น** → `revealWindow()` เพิ่ม CDP **minimize→normal** ก่อน `bringToFront`
+   (bringToFront ดึงแค่แท็บในตัว Chromium ไม่ยกหน้าต่างมาทับ Chrome หน้ากาก)
+2) **ไม่มีปุ่มปริ้น** (extension `dnp-eticket-receipt` อยู่แค่ Chrome ปกติ) → ก๊อป `receipt-core.js`+`content.js`
+   มาไว้ `src/receipt-inject/` แล้วฉีดเข้าหน้า DNP (สคริปต์ไม่ใช้ chrome.* API ฉีดได้ตรงๆ) + `--kiosk-printing` (Windows) ปริ้นเงียบ
+   ⚠️ **flow จริง (พี่วินยืนยัน):** สรุป→เลือก QR→หน้าจ่าย**เด้งหน้าต่างใหม่**→หน้าเดิม waiting→นทท.จ่าย→ขึ้นปุ่ม "ดูตั๋ว"→
+   **QR เข้าอุทยานเด้งหน้าต่างใหม่ = จุดที่ต้องปริ้น**. ลองแรกใช้ `addInitScript` → เทสพบ**ครอบ window.open popup ไม่ถึง**
+   (`window.DNPReceipt` undefined ในหน้าตั๋ว) → เปลี่ยนเป็น `injectReceiptButton()` ดักที่ `context.on('page')`+event `load`
+   ✅ เทส offline ผ่าน: หน้าหลัก+popup ตั๋วมีปุ่ม / popup จ่ายเงินคนละ host ไม่มีปุ่ม (ไม่รั่ว)
+   ⏳ **รอเทส live**: หน้าสรุปเด้งทับ + ปุ่ม 🖨️ ขึ้นในหน้าตั๋วท้ายสุด + ปริ้นออก
+
+### 🆕 (7/6/69 #3) หน้าสรุปเต็มจอ (Mac) + เลือกขนาดกระดาษ 57/80mm + เทส live 4 ใบ
+- **เทส live เอง 4 ใบ:** pipeline เป๊ะ (3 ใบเข้าคิว pending 1→2→3, ใบ4 reject ทันที) + ปุ่มปริ้นขึ้นหน้าสรุป (เห็นใน shot)
+  ⚠️ เจอ **orphan chromium สะสม** จาก `npm run restart` (kill -9 ไม่ graceful) — แก้ด้วย `npm stop` (เลี่ยง restart ตอน dev)
+- **หน้าสรุปเด้งเล็กมุมขวาบน Mac** (ไม่เต็มจอ): พบ `revealWindow` เดิม (minimize→normal+ขนาด) **Mac ไม่ apply ขนาด** ค้าง ~500×375
+  (screenshot เต็มเพราะยึด viewport ไม่ใช่ขนาดหน้าต่างจริง — หลอกตา). แก้: **minimize→normal→maximized + retry** ได้ 1470×838
+  (race: setWindowBounds(normal) ตอบก่อน OS ออกจาก minimized → maximized error → retry วนรอ). ✅ พิสูจน์ getWindowBounds ใน flow จริง แยก Mac/Windows
+- **เลือกขนาดกระดาษ 57/80mm** (พี่วินมีเครื่องปริ้น 2 ขนาด): modal ถามครั้งเดียวตอนเปิดหน้ากาก → server เก็บ in-memory →
+  ฉีด `window.__DNP_RECEIPT_WIDTH` เข้าหน้าตั๋ว → `receipt-core` parametrize (QR 38/42mm). ปริ้น silent ไป default printer (ตั้งเอง)
+  ✅ เทส: API (null→ถาม/57/fallback80), render 57+80, modal เด้ง+กดเลือก+chip. ⏳ รอพี่จ่ายจริงดูใบเสร็จ 57mm + หน้าตั๋วเต็มจอ
+  ⚠️ แก้ `receipt-core.js` 2 ที่ (ต้นฉบับ `~/dnp-eticket-receipt` + สำเนา `src/receipt-inject/`)
+- 💡 **บทเรียนเสียเวลา:** แก้ revealWindow แล้วพี่วินบอก "ยังไม่เต็มจอ" — ที่จริง `npm start/stop` ของ AI **fail เงียบ**
+  เพราะ cwd ค้างที่ `/Users/ovatina` (จาก `cd` ตอน zip) หา package.json ไม่เจอ → server เก่าโค้ดเดิมรันอยู่ พี่วินเลยเทสโค้ดเก่า
+  → **start server ด้วย path เต็ม `node /abs/.../src/server.js`** (cwd-independent) + ยืนยันโค้ดใหม่รันจริงด้วย log ก่อนสรุป
