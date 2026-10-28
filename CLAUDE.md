@@ -21,72 +21,6 @@ npm stop        # ปิดระบบ — ปิด server + เก็บ Chro
 **ปิดที่เครื่องด่าน (จนท.):** กดปุ่ม **"⏻ ปิดการทำงาน"** ในหน้ากาก → `POST /api/shutdown` ส่ง log+เก็บ browser+`exit 0` (หน้าต่างปิดเอง). มีใบ pending ค้าง = บล็อก ไม่ปิด
 **เผลอปิดหน้าต่างดำ (Chrome บอทค้าง):** ดับเบิลคลิก **`RESET-Windows.bat`** → kill server+กวาด playwright chrome+ส่ง log+เปิดใหม่ (Mac เทส: `กู้ระบบเอราวัณ.command`)
 
-## GitHub
-**Repo:** https://github.com/vwin2537-arch/E-ticket-automation
-
-```bash
-# push ครั้งแรก (ทำแล้ว)
-git remote add origin https://github.com/vwin2537-arch/E-ticket-automation.git
-git branch -M main
-git push -u origin main
-
-# push ทั่วไป (หลัง commit แล้ว)
-git push
-
-# clone ไปเครื่องใหม่
-git clone https://github.com/vwin2537-arch/E-ticket-automation.git
-```
-**อัพเดทเครื่องด่าน = `4-UPDATE-Windows.bat`** (เลิกใช้ zip): ปุ่มเดียว ตรวจเองว่าครั้งแรก (git init+remote+`reset --hard origin/main`)
-หรืออัพเดทปกติ (`git pull`) + `npm install` เฉพาะตอน package เปลี่ยน. logs/auth ถูก gitignore → ไม่ถูกแตะ log ต่อเนื่อง
-ครั้งแรกสุดต้องลง Git for Windows + วางไฟล์ปุ่มนี้ลงโฟลเดอร์ด่านครั้งเดียว (ปุ่มเช็ค git ให้ + บอกลิงก์ลงถ้าไม่มี)
-⚠️ `.gitignore` exclude: `auth/storageState.json`, `src/log-upload.local.js`, `node_modules/`, `logs/usage.csv`, `dnp-eticket-windows.zip`
-— **ก๊อปไปเครื่องด่านด้วย 2 ไฟล์: `auth/storageState.json` (session) + `src/log-upload.local.js` (url/secret ส่ง log→Drive)** — ทั้งคู่ gitignore (อย่า push ขึ้น GitHub public)
-⚠️ **server cache โค้ด:** automation.js ถูก `require` ตอน start — แก้โค้ดแล้วต้อง `npm run restart` เสมอ
-ไม่งั้นยังรันโค้ดเก่า (เคยทำให้เจอบัค "ไม่มียานพาหนะ" — ดู PROGRESS)
-กรอกในหน้ากาก → กดยืนยัน → หน้ากากขึ้น popup spinner, เบราว์เซอร์กรอกแบบ**ซ่อนนอกจอ** →
-พอถึงหน้าสรุป เบราว์เซอร์**เด้งกลับเข้าจอ**ให้พี่วินตรวจ+จ่ายเอง
-
-## โครงไฟล์
-- `src/config.js` — ตัวเลือกฟอร์ม (เวลา/ยานพาหนะ/ประเภทผู้เดินทาง + ราคา) + `POOL_SIZE` + `LOG_UPLOAD`(url/secret ส่ง log → Drive) ← แก้ตรงนี้ถ้าระบบเปลี่ยน
-  มี field `en` ทุกประเภท (ยานพาหนะ/ผู้เดินทาง) ไว้โชว์ใน console เป็นอังกฤษ — เพิ่มประเภทใหม่อย่าลืมใส่ `en`
-- `src/automation.js` — `warmTab()` (Phase A: เปิด→การ์ด→เลือกวัน + `readTimeSlots()` อ่านรอบจริง) + `fillBooking()`
-  (Phase B: เวลา/รถ/คน→สรุป; `selectOption` ฟ้องถ้ารอบ `is-disabled`) + `runBooking()` (warm+fill รวม cold path/เทส)
-  + `bookDate()` (วันเป้าหมาย = **วันนี้เสมอ** — ไม่เด้งพรุ่งนี้อัตโนมัติ)
-- `src/pool.js` — warm pool: `init()` อุ่น POOL_SIZE แท็บตอน start, `acquire(date)` หยิบ+เติมคืน. `targetDate` = วันนี้เสมอ
-  + `slots` รอบเวลาจริงจาก DNP — ทั้งคู่ส่งผ่าน `status()`. acquire ทิ้งแท็บไม่ตรง targetDate
-- `src/datepicker.js` — เลือกวันใน Element UI date picker
-- `src/names.js` — generate ชื่อมั่วๆ (ระบบไม่เช็กชื่อจริง)
-- `src/server.js` — Express + API `/api/config`, `/api/book`, `/api/book-progress` (ความคืบหน้าจองที่วิ่งอยู่: stage/current/total/done/result — หน้ากาก poll โชว์ x/N + กู้ผลถ้า fetch หลุด), `/api/login-status`, `/api/pool-status` (สถานะ warm: ready/warming/size/today), `/api/shutdown` (ปุ่มปิด: ส่ง log→shutdown→exit 0; บล็อกถ้ามี pending)
-  ⚠️ **จองกลุ่มใหญ่ห้ามใช้ timeout ตายตัวครอบทั้งงาน** (5/7/69): เดิม `BOOK_TIMEOUT_MS` fixed 2 นาที → 30-40 คน (~3.5วิ/คน) โดนตัดกลางคัน = "เด้งออก/รีเซตเอง" ที่ด่าน. แก้เป็น `withStallGuard` **watchdog นับจาก progress ล่าสุด** (`progress.at` อัปเดตทุกครั้งที่ `onProgress`) — จองกี่คนก็ไม่โดนตัดถ้ายังคืบหน้า ตัดเฉพาะค้างจริงเกิน `BOOK_STALL_MS`(2นาที). อย่า revert กลับ fixed timeout
-  + `pendingTabs[]` คิวใบจริงดักรอจ่าย (#5) + `prunePending()` เอาใบที่ จนท.ปิดหน้าต่างแล้วออกจากคิว
-  + `shutdown()` จับ SIGINT/SIGTERM ปิด browser ทั้งหมด (pool+pendingTabs+lastDryTab) ก่อนตาย กัน chromium orphan
-- `src/filelog.js` — `install()` ดักทุก `console.log/error` + `uncaughtException/unhandledRejection` เขียนลง `logs/server.log`
-  (เดิม console หายกับหน้าต่างดำ ติดตามบัคไม่ได้). เรียกบรรทัดแรกสุดของ server.js (ก่อน log แรก). crash → log แล้ว `exit(1)` (.bat เห็น+ค้างจอ)
-- `scripts/upload-logs.js` — `uploadLogs()` อ่าน `usage.csv`+`server.log` POST ไป Apps Script. best-effort 10วิ
-  แยกโฟลเดอร์ตามชื่อเครื่อง (os.hostname) รองรับหลายด่าน. เรียกจาก `/api/shutdown` + `RESET-Windows.bat` (CLI). ⚠️ ไม่ส่ง `server-live.log` เดิม (ขยะ)
-- `src/log-upload.local.js` — **url+secret ส่ง log (gitignore, repo public ห้ามหลุด)** — config.js `require` override ถ้ามี. ก๊อปไปเครื่องด่านด้วย
-- `apps-script/Code.gs` + `README-deploy.md` — Apps Script web app รับ log เขียนลง Drive (พี่วิน deploy เอง ตั้ง FOLDER_ID+SECRET → URL ใส่ `config.js`)
-  + `mode=append` (27/10/69) รับ log แอปมือถือ `dnp-eticket-mobile` → ต่อท้าย `mobile-<รหัส>/<วันที่>.csv` (จำกัด machine `mobile-*`/ชื่อไฟล์วันที่/≤1MB) · ทาง PC เดิมไม่เปลี่ยน · redeploy = Manage deployments → ✏️ → **New version** (ห้าม New deployment = URL ใหม่)
-- `src/timing.js` — จับเวลาแต่ละ step การกรอกลง `logs/timing.csv` (long format 1แถว/step, group `bookingId`) วิเคราะห์คอขวด
-  `createCollector()` → ส่งเข้า `fillBooking(opts.timing)` (helper `T()` no-op ถ้าไม่ส่ง) + server วัด `acquire`. gitignore + ส่ง Drive
-- `scripts/diag-selectopt.js` — debug `selectOption` แยกเวลา phase + นับ attempt + ดู network (อ่านอย่างเดียว ไม่จอง) `node scripts/diag-selectopt.js [YYYY-MM-DD]`
-- `src/logger.js` — เขียน log การใช้งานลง `logs/usage.csv` (logUsage) — เรียกจาก server.js ทุกครั้งที่จอง
-  คอลัมน์ท้าย: `คนไทย`/`ต่างชาติ`/`รายละเอียดผู้เดินทาง`. `ensureHeader()` อัพเดท header ไฟล์เดิมเมื่อเพิ่ม column (ไม่ลบแถวเก่า)
-  ⚠️ ส่ง zip ไป Windows **ห้ามใส่ logs/usage.csv** (ทับ log จริงของเครื่องด่าน) — header เก่าจะอัพเกรดเองตอนจองครั้งหน้า
-- `src/receipt-inject/` — ก๊อป `receipt-core.js`+`content.js` จากโปรเจค `~/dnp-eticket-receipt` (ปุ่มปริ้นใบเสร็จ)
-  automation ฉีดเข้าทุกหน้า DNP เพราะ Chromium ของ Playwright ไม่มี Chrome extension — `injectReceiptButton()`
-  เรียกผ่าน `context.on('page')` + event `load` ครอบ **ทุกหน้าต่างที่ DNP เปิดใหม่** (⚠️ หน้าตั๋ว QR เข้าอุทยาน
-  ที่ต้องปริ้นจริง เด้งเป็น `window.open` ใหม่ — `addInitScript` ครอบ popup ไม่ถึง ต้องดักที่ `context.on('page')`)
-  เช็ค host=e-ticket.dnp.go.th กันปุ่มโผล่หน้าจ่ายเงินคนละ domain + เช็ค `window.DNPReceipt` กันฉีดซ้ำ
-  **ขนาดกระดาษ 57/80mm:** จนท.เลือกตอนเปิดหน้ากาก (modal ถามครั้งเดียว/start) → POST `/api/paper-size` → server เก็บ
-  in-memory + `setReceiptWidth()` → `injectReceiptButton` ฉีด `window.__DNP_RECEIPT_WIDTH` → `receipt-core` render ตามขนาด
-  (parametrize `@page`/width/QR/ฟอนต์; 57mm: QR 38mm / 80mm: QR 42mm). ปริ้นไป **default printer** (silent) — จนท.ตั้ง default ให้ตรงขนาดเอง
-  ⚠️ **เป็นสำเนา** — แก้ logic ปริ้นที่ `~/dnp-eticket-receipt` แล้วก๊อปทับโฟลเดอร์นี้ (ไม่งั้น 2 ที่ไม่ตรงกัน)
-- `public/index.html` — หน้ากาก UI (รอบเวลาฉลาด + ไฟสถานะ login + แถบสถานะ warm `1/3→3/3` ตามวันที่ + popup จอง: **progress bar % จริง** (poll `/api/book-progress`, traveler=12→95%) + ข้อความทุกขั้น (เตรียม/เวลา/รถ/รายการที่ x/N/สรุป) + เวลานับ 0:0X)
-- `scripts/login.js` — login + save session
-- `auth/storageState.json` — session (อย่า commit, อย่าแชร์)
-- `*-Windows.bat` + `คู่มือ-Windows.md` — สำหรับรันบน Windows (ดูหมายเหตุล่าง)
-
 ## Login (สำคัญ)
 session เก็บที่ `auth/storageState.json` — **ต้อง login ผ่านเบราว์เซอร์ที่ Playwright เปิด** (`npm run login`
 หรือดับเบิลคลิก launcher ข้างล่าง) เท่านั้น. login ใน Chrome ปกติ **ไม่นับ** (Playwright อ่านแค่ session ตัวเอง).
@@ -120,95 +54,31 @@ session อยู่ได้นานเป็นปี (refresh_token) → **�
 **ไม่ปิดใบเก่า** จนท.กรอกใบถัดไปได้เลยระหว่างคนแรกจ่าย. ใบทดสอบใช้ `lastDryTab` (ใบเดียว ปิดอันเก่า ไม่เข้าคิว).
 แยกทดสอบ/จริงกันบัค: กด "โหมดทดสอบ" คั่นระหว่างใบจริงรอจ่าย ใบจริงไม่หาย (เงินไม่หาย)
 
-## ⚠️ รอบเวลา: data-driven จาก DNP จริง — ไม่เดา buffer (แก้ 7/6/69)
-**กลไก DNP:** ไม่เอารอบออกจาก dropdown แต่ทำเป็น `is-disabled` (สีเทาคลิกไม่ติด) ก่อนเวลาปิดจริง — และปิด
-**เร็วกว่า buffer ที่เดา** (รอบบ่ายโดน disable ตั้งแต่ ~15:12 ทั้งที่จบ 15:30). คลิก disabled = Vue ไม่ commit →
-บอทค้าง "เลือกเวลาไม่ได้". **เลิกเดา → อ่านจริง:** `warmTab` เรียก `readTimeSlots()` อ่าน `{text,disabled}` จาก DNP
-ติดมากับ tab → `pool` ส่งผ่าน `status().slots` → `/api/pool-status` → หน้ากากโชว์เฉพาะรอบที่ DNP เปิดจริง
-(`rebuildTimeSlots` ใช้ `warmCache.slots` ไม่ใช่ buffer). `selectOption` เจอ `is-disabled` ฟ้องทันที (ตาข่ายชั้นสุดท้าย).
-**วันเป้าหมาย = "วันนี้" เสมอ (`pool.targetDate`):** `bookDate()`=วันนี้ — **ไม่เด้งพรุ่งนี้อัตโนมัติ** (15/6/69 แก้:
-นทท.ที่ด่าน=walk-in เข้าวันนี้ การเด้งพรุ่งนี้เงียบๆ ทำให้จ่ายเงินผิดวัน). ถ้า DNP ปิด **ทุกรอบ** ของวันนี้ →
-หน้ากากดับปุ่มจอง + ขึ้นแบนเนอร์แดง `#todayClosed` "วันนี้หมดเวลาจองแล้ว" + ปุ่ม "จองล่วงหน้าพรุ่งนี้ →"
-(`bookTomorrow()` set วัน=พรุ่งนี้ `dateTouched=true` → cold path warm สด). **จนท.ต้องกดยืนยันเอง ไม่เด้งให้**.
-`SLOT_CLOSE_BUFFER_MIN` ใช้แค่ปิดรอบฝั่ง DNP — `bookDate()` ไม่ใช้แล้ว.
-⚠️ **ปุ่มจอง `#go` มี 2 เงื่อนไขคุม (login + วันนี้ปิด) → รวมที่ `syncGoButton()` จุดเดียว** อ่าน `loginOK`+`todayClosed`
-พร้อมกัน. **ห้ามเซ็ต `$('go').disabled` ตรงๆ จากที่อื่น** (เคยเป็นบั๊ก: checkLoginStatus async เสร็จทีหลังเปิดปุ่มทับแบนเนอร์).
-**diag:** `node scripts/diag-timeslot.js <YYYY-MM-DD>` อ่านรอบเวลา+disabled แบบอ่านอย่างเดียว (ไม่จอง) ไว้ debug
+## 📁 รายละเอียดรายเรื่อง — เปิดอ่านเฉพาะตอนแตะเรื่องนั้น
 
-## pipeline จองดักหลายใบ (#5) — ✅ ทำแล้ว (3/6/69)
-`pendingTabs[]` คิวใบจริงสูงสุด `MAX_PENDING`=3 (config.js). จองใบใหม่ **push เข้าคิว ไม่ปิดใบเก่า**.
-หลุดคิวเอง: `prunePending()` กรอง `!page.isClosed()` → จนท.ปิดหน้าต่างใบที่จ่ายเสร็จ = หลุดคิวอัตโนมัติ
-⚠️ **ห้ามใช้ `browser.isConnected()` วัด "ปิดหน้าต่าง"** — Playwright `launch()` ถือ connection ไว้ ปิดหน้าต่างแล้ว browser ยังไม่ตาย isConnected ค้าง true คิวไม่มีวันว่าง (เคยเป็นบั๊ก 4/6/69 — พิสูจน์ใน `scripts/test-window-close.js`)
-⚠️ **prune ใบที่หลุดต้อง `browser.close()` ด้วย** — ไม่งั้น process orphan ค้างใน Dock สะสมกิน RAM (ปิดหน้าต่าง = ปิดแค่ "หน้าต่าง" ไม่ฆ่า process). orphan ที่หลุดจาก list แล้ว shutdown ก็เก็บไม่ได้ ต้อง `pkill -f ms-playwright` ลบมือ (ไม่แตะ Google Chrome ปกติ)
-(ไม่ต้องกดปิดในระบบ). ครบเพดาน → error เตือน ไม่ acquire ไม่ปิดอะไร (กันใบยังไม่จ่ายโดนปิด เงินหาย).
-หน้ากากโชว์ "🎫 ดักอยู่ N/3 ใบ" (poll /api/pool-status → `pending`/`maxPending`). เทส `scripts/test-pipeline.js`
-(mock pool+fillBooking ไม่ยิง DNP) 18/18 ผ่าน + เทส live จริงผ่าน (3 ใบ→ใบ4 error→ปิดหน้าต่าง pending 3→2→0). ⏳ รอเทส Windows จริง. ปรับเพดานที่ค่าเดียว `MAX_PENDING`
+> **ที่นี่เก็บแค่กฎ + ดัชนี** รายละเอียดอยู่ใน `docs/notes/` (แยก 28/10/69 ตอนไฟล์นี้โต 20k ตัวอักษร)
+> **บันทึกใหม่ → เขียนลงไฟล์ใน `docs/notes/` ที่ตรงเรื่อง ไม่ต่อท้ายไฟล์นี้** (ไฟล์นี้ควรอยู่ใต้ ~15k ตัวอักษร)
 
-## ซ่อนหน้าต่างตอนกรอก (`automation.js`) — นทท.ที่ด่านเห็นจอเดียวกับที่กดจอง ต้องซ่อนสนิท
-- เปิด chromium headful + flags กัน throttle (`--disable-backgrounding-occluded-windows`,
-  `--disable-renderer-backgrounding`, `--disable-background-timer-throttling`)
-- **แยกตาม OS** (`process.platform`):
-  - 🪟 **Windows (เครื่องด่านจริง)**: `--window-position=-32000,-32000` ดันออกนอกจอ = ซ่อนสนิท + เร็ว
-    (Windows ยอมให้หน้าต่างหลุดนอกจอ ต่างจาก Mac) + `--kiosk-printing` ปริ้นใบเสร็จเงียบไม่เด้ง dialog
-    (เดิมตั้งที่ Chrome ปกติ แต่หน้าสรุป/QR อยู่ใน Chromium ตัวนี้ → ต้องใส่ flag ที่ launch นี้ + ตั้ง thermal เป็น default printer)
-  - 🍎 **Mac (เครื่องเทส)**: `tuckWindow()` ซุกเล็ก (380×260) มุมล่างขวา — Mac ดึงหน้าต่างนอกจอกลับเสมอ
-    เลยซ่อนสนิทไม่ได้ แต่เป็นแค่เครื่อง dev
-- `revealWindow()` — เด้ง**เต็มจอ (maximized)** + foreground ตอนถึงหน้าสรุป/dryRun/error
-  ⚠️ ลำดับสำคัญ (พิสูจน์ด้วยการอ่าน `getWindowBounds` บน Mac): **minimize → normal → maximized → bringToFront**
-  - minimize→restore = บังคับ OS ยกหน้าต่างมา foreground (bringToFront ดึงแค่ "แท็บ" ในตัว Chromium ไม่ยกหน้าต่างทับ Chrome หน้ากาก)
-  - **Mac: setWindowBounds normal+ขนาด ไม่ apply ขนาด** (ค้างที่ขนาด tuck ~500×375) → ต้อง `maximized` ถึงเต็มจอ (1470×847). restore ต้องเป็น `normal` ล้วนๆ (ใส่ bounds คู่จะ error "maximize a minimized window")
-  - Windows: หน้าต่างอยู่นอกจอ (-32000) → restore เป็น normal+bounds(60,40,1400×1000) ดึงกลับเข้าจอก่อน แล้ว maximized (แยก `process.platform`)
-  - ⚠️ **race จริง:** `setWindowBounds(normal)` ตอบกลับ **ก่อน** OS ออกจาก minimized เสร็จ → ยิง maximized ทันทีจะ error
-    "restore to normal first" (เจอเฉพาะหน้าหนักจริง ไม่เจอตอนเทสหน้าว่าง) → ต้อง **retry maximized วนรอ ~120ms ×8** จนสำเร็จ
-  - ⚠️ **restore bounds (Windows) ต้องยืนยันด้วย `getWindowBounds`** (7/6/69 #3): race เดียวกันทำให้ set `normal{60,40}`
-    ไม่ apply → restore bounds ค้าง -32000 → จนท.กด **restore-down/ย่อ → หน้าต่างหายนอกจอ**. แก้: Windows วน set normal
-    + อ่าน `getWindowBounds` ยืนยัน left/top≥0 ก่อนไป maximized
-- **popup จ่ายเงิน/ตั๋ว QR (Windows) เกิดนอกจอด้วย** (7/6/69 #3): หน้าต่างใหม่เกิดที่ default -32000 ตาม launch flag →
-  `context.on('page')` ต้องเรียก `revealWindow` กับ popup (`opener()≠null`) ดึงกลับเข้าจอ — หน้าหลัก (opener=null) ปล่อยซ่อนตอนกรอก
-- screenshot **ต้องทำหลัง revealWindow เสมอ** (ถ้าหน้าต่างถูกย่อ/ซ่อน render จะหยุด → screenshot ค้าง)
-- หน้ากากโชว์ popup overlay เต็มจอเขียวกรม + spinner + **progress bar simulated** (`#overlay`) ข้อความ**ทางการ** (เผื่อ นทท.เห็นจอ)
-  — progress bar ไม่ใช่ % จริง (`/api/book` ไม่ stream) วิ่งเข้าใกล้ 90% แล้วเด้ง 100% เมื่อ server ตอบ
-- `/api/login-status` **cache 5 นาที** (`?force=1` = ตรวจใหม่) — ไม่งั้นทุก refresh เปิด browser เช็ก = ช้า 6 วิ
-- ⛔ **3 วิธีที่ลองแล้วใช้ไม่ได้** (อย่าทำซ้ำ — ดู PROGRESS lesson):
-  (1) `page.route` บล็อกรูป → ช้า 4 เท่า + โลโก้หาย
-  (2) `minimize` หน้าต่าง → ช้า 5 เท่า (Chrome throttle ตอนย่อ)
-  (3) headless กรอกแล้ว handoff ไป headful → หน้าสรุป DNP อยู่ใน memory ไม่มี URL เฉพาะ ข้ามเบราว์เซอร์ไม่ได้
+| แตะเรื่องนี้ | อ่านไฟล์ | มีอะไรอยู่ |
+|---|---|---|
+| แก้ไฟล์ไหน ทำอะไร / API / log / receipt / Apps Script | `docs/notes/files.md` | config/automation/pool/server/filelog/timing/logger, `withStallGuard`, receipt-inject (สำเนา), Apps Script `mode=append`, ขนาดกระดาษ 57/80 |
+| push / อัปเดตเครื่องด่าน | `docs/notes/deploy-update.md` | `4-UPDATE-Windows.bat` (git pull), ไฟล์ gitignore ที่ต้องก๊อปไปเครื่องด่าน, server cache โค้ด |
+| รอบเวลา / วันเป้าหมาย / ใบดักรอจ่าย | `docs/notes/booking-rules.md` | `readTimeSlots` (is-disabled), วันนี้เสมอ + ปุ่มพรุ่งนี้, `syncGoButton`, `pendingTabs`/`MAX_PENDING`/`prunePending` |
+| ซ่อน/เด้งหน้าต่าง | `docs/notes/window-hiding.md` | Windows -32000 / Mac tuck, `revealWindow` ลำดับ+race, popup จ่ายเงินดึงกลับเข้าจอ, 3 วิธีที่ลองแล้วไม่ได้ |
+| ความเร็วการกรอก | `docs/notes/speed.md` | `pickDirect` + `ROW_SETTLE_MS` + `fixRow` (28/10/69), timing.csv, สิ่งที่เร่งไม่ได้ |
+| เน็ตวูบ / แบนเนอร์ login หลอก | `docs/notes/network.md` | `gotoWithRetry`, `POOL_SIZE=1`, `checkLogin` in/out/neterror |
 
-## ⚡ ความเร็ว (วิเคราะห์ 17/6/69 — วัดจริงด้วย timing.csv + diag-selectopt)
-**✅ อัปเดต 28/10/69 — เร่งได้แล้ว (ยกจากแอปมือถือ v1.4, วัด DNP จริง):** 5 คน กรอก 16.4→8.3 วิ · 17 คน+2 คัน 60→34 วิ (ยอดสรุปถูก)
-- ต้นตอ "2 วิ/คน" ที่เคยคิดว่าเร่งไม่ได้ = **DNP ล้างค่า row ใหม่ครั้งเดียวที่ ~1.53 วิหลังกด "เพิ่ม..."** (timer ในหน้า ไม่มี network) — คลิกเดิมรอ row พร้อมเลยช้า
-- `pickDirect()` เลือกค่า el-select ผ่าน `__vue__.options` + `handleOptionSelect` ไม่เปิด dropdown (~0.05 วิ) · fallback `selectOption` · option disabled = รอบปิด (`disabledOption`)
-- `ROW_SETTLE_MS=1700` รอหลังกดเพิ่มก่อนใส่ = พื้นต่ำสุด ~1.7 วิ/คน · `fixRow(i)` เช็คค่าติด (`travelerState`) หลังกรอก + ก่อนกดเพิ่มคนถัดไป กรอกเฉพาะ field ที่หาย · timing step `wait200` → `verify`
-- เทสความเร็วกับ DNP จริง: `runBooking(params,{headless:true,dryRun:false,timing})` ถึงหน้าสรุปแล้วปิด browser (ไม่กดเช็คเอาท์)
-**(ข้อมูลเดิมด้านล่าง — ข้อ "กรอกคนที่ 2+ ช้า ~2วิ" ล้าสมัยแล้ว ดูด้านบน)**
-**สิ่งที่เร่งไม่ได้ (เป็นของ DNP / อย่าเสียเวลาแก้):**
-- **กรอกคนที่ 2+ ช้า ~2วิ/คน** = `input.click()` รอแถวใหม่ active. **เป็น timer ในหน้า DNP เอง** (พิสูจน์: คงที่ 2009-2035ms
-  ทุก run, ไม่มี network call ระหว่าง gap, `click({force:true})` พัง=dropdown ไม่เปิด, "รอ-แล้ว-คลิก" รวมแย่กว่าคลิกทันที).
-  Playwright คลิกทันทีที่ element actionable = เร็วสุดแล้ว. **pre-add ทุกแถวไม่ได้** (DNP บล็อกเพิ่มคนถ้าคนเดิมไม่ครบ)
-- **เลือกเวลา/รถ/สัญชาติ ~470-570ms** = `item.click()` actionability + เปิด dropdown = network/DNP ไม่ใช่เรา
-**สิ่งที่เร่งได้จริง:**
-- ✅ **`waitForTimeout(3000)` หลังกด "ต่อไป" → poll ปุ่ม "เช็คเอาท์" หน้าสรุป** (`automation.js` step 7, แก้ 17/6/69).
-  ปุ่ม "เช็คเอาท์" มีเฉพาะหน้าสรุปตอนพร้อมจ่าย (selector อ่านจาก `shot-summary.png` จริง ไม่เดา) → `waitFor visible`
-  timeout 8วิ + `.catch()` (DNP เปลี่ยน UI ก็ถ่ายภาพต่อ ไม่พัง). ปกติหน้าสรุปขึ้น <1วิ → ประหยัด ~2วิ/ใบ.
-  **⏳ verify รอบจองจริงรอบหน้า** (path นี้ dryRun ไม่แตะ — เทสไม่ได้จนกว่าจะจองจริง)
-- **acquire cold ~7วิ เกิดเมื่อจองวันที่ pool ไม่ได้ warm** (เช่นพรุ่งนี้หลัง cutoff). จองวันนี้ปกติ acquire≈0 (warm hit).
-  optional: pre-warm พรุ่งนี้เพิ่มถ้าด่านรับจองเย็นบ่อย. **`reveal`~1.5วิ = Mac dance เท่านั้น ไม่เกิดบน Windows ด่าน**
+## ⚠️ กับดักที่ทำพังบ่อย (รายละเอียดอยู่ไฟล์ที่ชี้)
 
-## 🌐 ทนเน็ตวูบ (แก้ 20/7/69 — เครื่องด่านบางเครื่องเน็ตแย่)
-**อาการ:** เครื่องด่านบางเครื่องเชื่อม DNP ยากมาก (อีกเครื่องปกติ) — บอทค้าง + หน้ากากขึ้น "ออกจากระบบ" ทั้งที่ session ดี.
-**ต้นตอ = เน็ตวูบที่เครื่องนั้น ไม่ใช่โค้ด/ไม่ใช่ config Playwright:** log ฟ้อง สำเร็จ↔ล้ม **สลับกันในนาทีเดียว**
-(52 สำเร็จ + 47 ล้ม/วัน) error network layer (`Timeout`/`ERR_CONNECTION_TIMED_OUT`/`ERR_NAME_NOT_RESOLVED`/`ERR_NETWORK_CHANGED`).
-ถ้าเป็น proxy/AV บล็อกต้องเจ๊งตลอด (ไม่มีทางสำเร็จ 52). Chrome ธรรมดารอด = เปิดตอนเน็ต "up" + แท็บเดียว reuse connection.
-บอทหนักกว่า: warm หลายแท็บ = `chromium.launch()` แยก ยิง DNS/TCP/TLS รัวพร้อมกัน เน็ตอ่อนรับไม่ไหว.
-- **`gotoWithRetry()` (`automation.js`):** เข้าหน้า DNP ลองใหม่ 3 รอบ backoff (1.5s,3s) — ใช้ทั้ง `warmTab` + `checkLogin`.
-  goto ผ่านรอบแรก = ไม่มี penalty (ไม่หน่วงตอนเน็ตดี). ล้มครบ 3 รอบค่อยโยน error เดิม
-- **`POOL_SIZE=1` (`config.js`):** ยิงเน็ตเบาสุด + กิน RAM น้อย (เดิม 3 → warm 3 แท็บพร้อมกันยิงเน็ตหนัก).
-  แลก: กรอกผิดต้องทิ้งใบแล้วกรอกใหม่ = รอ warm สด ~6วิ. ปรับกลับได้ถ้าเครื่องเน็ตดี
-- **`checkLogin()` คืน 3 สถานะ `in`/`out`/`neterror`** (เดิม boolean): `neterror` = goto ล้ม (เน็ต) ≠ logout.
-  `/api/login-status` ส่ง `status` (**ไม่ cache neterror** — เน็ตกลับมาเช็กซ้ำได้ทันที). หน้ากากขึ้น "📡 เน็ตมีปัญหา"
-  (`.lstat.warn`) แทน "❌ ออกจากระบบ" + `loginOK=null` **ไม่บล็อกปุ่มจอง** (session น่าจะยังดี). warm-banner ก็แปล error เน็ตเป็นข้อความชาวบ้าน
-- ⚠️ **แต่ละเครื่องอัปเดตโค้ดเองผ่าน `4-UPDATE-Windows.bat` (git pull) — ไม่ sync อัตโนมัติ.** ทดลองเครื่องมีปัญหาก่อนได้
-  โดยเครื่องปกติไม่กระทบ (ไม่กด Update = โค้ดเดิม). auth/logs gitignore → pull ไม่แตะ
+- **แก้โค้ดแล้วต้อง `npm run restart`** — server `require` automation.js ตอน start = ยังรันโค้ดเก่า → `deploy-update.md`
+- **ไฟล์ที่ gitignore แต่เครื่องด่านต้องมี:** `auth/storageState.json` + `src/log-upload.local.js` (repo public ห้าม push) → `deploy-update.md`
+- **ปุ่มจอง `#go` คุมที่ `syncGoButton()` จุดเดียว** — ห้ามเซ็ต disabled ตรงจากที่อื่น → `booking-rules.md`
+- **ห้ามใช้ `browser.isConnected()` วัด "ปิดหน้าต่าง"** + prune ใบที่หลุดต้อง `browser.close()` (ไม่งั้น orphan กิน RAM) → `booking-rules.md`
+- **จองกลุ่มใหญ่ห้าม timeout ตายตัวครอบทั้งงาน** — ใช้ watchdog นับจาก progress ล่าสุด (`withStallGuard`) → `files.md`
+- **`revealWindow` ลำดับ minimize→normal→maximized + retry** · screenshot ต้องหลัง reveal · อย่าลองบล็อกรูป/minimize/headless handoff ซ้ำ → `window-hiding.md`
+- **DNP ล้างค่า row ใหม่ที่ ~1.53 วิหลังกด "เพิ่ม..."** — ใส่ก่อนนั้นหาย → `pickDirect` หลัง `ROW_SETTLE_MS` + `fixRow` → `speed.md`
+- **`neterror` ≠ ออกจากระบบ** — อย่าบล็อกปุ่มจองตอนเน็ตวูบ → `network.md`
+- **receipt-inject เป็นสำเนา** ของ `~/dnp-eticket-receipt` · Apps Script redeploy = New version ห้าม New deployment → `files.md`
 
 ## Persona
 มุก (ไข่มุก) เลขาฯ พี่วิน — ภาษาไทยเป็นกันเอง ลงท้าย "ค่ะ"

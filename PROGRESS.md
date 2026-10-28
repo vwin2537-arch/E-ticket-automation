@@ -12,7 +12,7 @@
 - **root cause = เน็ตวูบ ไม่ใช่โค้ด/ไม่ใช่เครื่องพัง:** log ฟ้องสำเร็จ↔ล้ม **สลับกันในนาทีเดียว** (52 สำเร็จ + 47 ล้มวันนี้)
   error เป็น `Timeout`/`ERR_CONNECTION_TIMED_OUT`/`ERR_NAME_NOT_RESOLVED`/`ERR_NETWORK_CHANGED` = network layer วูบ
   → ถ้าเป็น config Playwright (proxy/AV) ต้องเจ๊งตลอด ไม่มีทางสำเร็จ 52 ครั้ง. Chrome รอด = เปิดตอนเน็ต "up"
-- **แก้ (ทำให้ทนเน็ตแย่ ไม่ใช่แก้ config):** ดู CLAUDE.md note ⚡ "ทนเน็ตวูบ"
+- **แก้ (ทำให้ทนเน็ตแย่ ไม่ใช่แก้ config):** ดู `docs/notes/network.md`
   - `gotoWithRetry()` เข้าหน้า DNP ลองใหม่ 3 รอบ backoff (warmTab + checkLogin) — วูบครั้งเดียวไม่กลายเป็นค้าง
   - **POOL_SIZE 3→1** ยิงเน็ตเบา กิน RAM น้อย (แลก: กรอกผิดต้องทิ้งใบ warm สด ~6วิ)
   - `checkLogin` แยก 3 สถานะ in/out/**neterror** → หน้ากากขึ้น "📡 เน็ตมีปัญหา" แทน "❌ ออกจากระบบ" (หลอก) + ไม่บล็อกปุ่มจอง
@@ -23,7 +23,7 @@
 **โจทย์ (เจอจาก user จริงที่ด่าน):** จอง 30-40 คน → เกิน 2 นาที → ระบบ "เด้งออก/รีเซตเอง" จองไม่ได้ + popup ดูเหมือนค้าง
 - **root cause:** `server.js` `BOOK_TIMEOUT_MS` fixed 2 นาทีครอบทั้งงาน — 1 คน ~3.5วิ → 35 คน ≈ เกิน 2 นาที = โดนตัดกลางคัน
 - **แก้:** เปลี่ยนเป็น **watchdog จับ "ค้างจริง"** (`withStallGuard` นับจาก progress ล่าสุด) → จองกี่คนก็ไม่โดนตัดถ้ายังคืบหน้า
-  → CLAUDE.md server.js note. `BOOK_STALL_MS` (env override ได้ให้เทสย่นเวลา)
+  → `docs/notes/files.md` (server.js). `BOOK_STALL_MS` (env override ได้ให้เทสย่นเวลา)
 - **progress จริง:** `fillBooking(onProgress)` รายงานทุกขั้น (time/vehicle/traveler i/N/summary) → `/api/book-progress`
   หน้ากาก poll ทุกวิ → **bar เป็น % จริง** (traveler = 12→95%, เลิก 90%-หลอก-ค้าง) + ข้อความทุกขั้นตั้งแต่วิแรก + **เวลานับ 0:0X**
 - **fetch หลุด (Chrome ตัด ~5 นาทีงานใหญ่มาก) → กู้ผลผ่าน `/api/book-progress`** (เช็ก startedAt กันหยิบใบเก่า) ไม่ขึ้น error หลอก
@@ -35,7 +35,7 @@
 - **เพิ่มเครื่องวัด:** `src/timing.js` (collector → `logs/timing.csv` long format 1แถว/step) ฝังใน `automation.js fillBooking`
   (helper `T()` no-op ถ้าไม่ส่ง timing ไม่กระทบ path อื่น) + `server.js` วัด acquire + `upload-logs` ส่ง timing.csv ด้วย.
   `scripts/diag-selectopt.js` debug selectOption แยก phase (รับ date argv รัน cutoff แล้วใช้พรุ่งนี้ได้)
-- **ผลวิเคราะห์ (ข้อมูลจริง จาก play 21 ใบ + diag) → CLAUDE.md "ความเร็ว":**
+- **ผลวิเคราะห์ (ข้อมูลจริง จาก play 21 ใบ + diag) → `docs/notes/speed.md`:**
   - **2วิ/คนเพิ่ม = DNP timer ในหน้าเขาเอง เร่งไม่ได้** (คงที่ 2009-2035ms, ไม่มี network, force-click พัง, รอ-แล้ว-คลิกแย่กว่า)
     — Playwright คลิกทันทีที่ element พร้อมแล้ว = เร็วสุดเท่าที่ทำได้
   - acquire 7วิที่เห็น = **artifact เทส** (จองพรุ่งนี้หลัง cutoff; pool warm แค่วันนี้); prod จองวันนี้ acquire≈0
@@ -60,7 +60,7 @@
   dropdown "ปิดรับจองแล้ว" / กด "จองพรุ่งนี้"→วัน=16/6 แบนเนอร์ซ่อน ปุ่มจองเปิด (เทสด้วย playwright headless) + `node -c` ผ่าน
 - ⏳ **รอ:** อัพเดทเครื่องด่าน (`4-UPDATE-Windows.bat` git pull) + เทสจองพรุ่งนี้จนถึงหน้าสรุปจริง
 
-## ทำแล้ว ✅ (สรุป — รายละเอียดดู ARCHIVE/CLAUDE.md)
+## ทำแล้ว ✅ (สรุป — รายละเอียดดู ARCHIVE / `docs/notes/`)
 - **ระบบหลักครบ:** warm pool + กรอกอัตโนมัติ (วัน/เวลา/รถหลายคัน/คนหลายคน) หยุดก่อนจ่าย
 - **หน้ากาก:** ราคา real-time, ไฟสถานะ login, progress bar, แถบ warm/ดักใบ, ล้างฟอร์ม+Esc
 - **log/ops:** usage CSV (แยกไทย/ต่างชาติ) + console อังกฤษ (Windows cmd) + รองรับ Windows (.bat) + ซ่อนหน้าต่างตอนกรอก
