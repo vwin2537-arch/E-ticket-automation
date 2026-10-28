@@ -94,6 +94,62 @@ async function selectOption(page, placeholder, index, matchText, { exact = false
 
 // ซุกหน้าต่างเล็กๆ มุมล่างขวาตอนกรอก — render ยังทำงาน (ไม่ minimize) เลยเร็ว + รบกวนสายตาน้อย
 // (minimize ทำให้ Chrome throttle ช้า 5 เท่า / ดันนอกจอ Mac ดึงกลับ — เลยใช้ "เล็ก+มุม" แทน)
+// เลือกค่าใน el-select ตรงผ่าน Vue (ไม่เปิด dropdown) — ตัวเลือกทั้งหมดอยู่ใน .el-select.__vue__.options แล้ว
+// (สัญชาติ 249 ประเทศ) · วัดกับ DNP จริง 28/10/69: เปิด dropdown ~0.5-2.5 วิ/ช่อง → ตรงนี้ ~0.05 วิ
+// ยกมาจากแอปมือถือ (dnp-eticket-mobile v1.4) · หาไม่เจอ/ค่าไม่ติด → ถอยไป selectOption (คลิกจริง) แบบเดิม
+async function pickDirect(page, placeholder, index, matchText, { exact = false } = {}) {
+  const args = { placeholder, index, matchText, exact };
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const r = await page.evaluate(({ placeholder, index, matchText, exact }) => {
+      const el = document.querySelectorAll(`input[placeholder="${placeholder}"]`)[index];
+      const vm = el && el.closest('.el-select') && el.closest('.el-select').__vue__;
+      if (!vm || !vm.options || !vm.options.length) return 'notready';
+      const opt = vm.options.find((o) => {
+        const t = String(o.currentLabel || '').trim();
+        return exact ? t === matchText : t.includes(matchText);
+      });
+      if (!opt) return 'notfound';
+      if (opt.disabled || opt.groupDisabled) return 'disabled';
+      vm.handleOptionSelect(opt, true);
+      return 'ok';
+    }, args).catch(() => 'error');
+    if (r === 'ok') {
+      const ok = await page.waitForFunction(({ placeholder, index }) => {
+        const el = document.querySelectorAll(`input[placeholder="${placeholder}"]`)[index];
+        const vm = el && el.closest('.el-select') && el.closest('.el-select').__vue__;
+        return !!(vm && vm.value);
+      }, args, { timeout: 800, polling: 30 }).then(() => true).catch(() => false);
+      if (ok) return;
+    }
+    if (r === 'notfound' || r === 'error') break;
+    // disabled = DNP ปิดรอบ — ฟ้องเฉพาะถ้ายัง disabled หลังรอ (กันโควต้าโหลดไม่ทันชั่วครู่)
+    if (r === 'disabled' && attempt === 2) {
+      const err = new Error(`ตัวเลือก "${matchText}" ถูกปิดรับแล้ว`);
+      err.disabledOption = true;
+      throw err;
+    }
+    await page.waitForTimeout(r === 'notready' ? 300 : 700);
+  }
+  return selectOption(page, placeholder, index, matchText, { exact });
+}
+
+// DNP ล้างค่า row ใหม่ (ผู้เดินทาง/ยานพาหนะ) ทิ้งเองครั้งเดียว ~1.53 วิหลังกด "เพิ่ม..." (timer ในหน้า ไม่มี network
+// — วัด 8 row กับระบบจริง 28/10/69) = ที่มาของ "sel_type ~2.5 วิ/คน" เดิม (คลิกรอแถวพร้อม) → รอให้พ้นแล้วค่อยใส่ทีเดียว
+const ROW_SETTLE_MS = 1700;
+
+// ค่า row ผู้เดินทาง i ติด model ครบไหม → { t, n, name } (true = มีค่าแล้ว)
+function travelerState(page, i) {
+  return page.evaluate((i) => {
+    const vm = (ph) => {
+      const el = document.querySelectorAll(`input[placeholder="${ph}"]`)[i];
+      return el && el.closest('.el-select') && el.closest('.el-select').__vue__;
+    };
+    const t = vm('ประเภทผู้เดินทาง'), n = vm('สัญชาติ');
+    const nm = document.querySelectorAll('input[placeholder="ชื่อ - นามสกุล"]')[i];
+    return { t: !!(t && t.value), n: !!(n && n.value), name: !!(nm && nm.value) };
+  }, i);
+}
+
 async function tuckWindow(page) {
   try {
     const cdp = await page.context().newCDPSession(page);
@@ -291,7 +347,7 @@ async function fillBooking(page, params, opts = {}) {
     prog({ stage: 'time' });
     log(`Selecting time slot ${params.timeSlot}...`);
     try {
-      await T('time_slot', '', () => selectOption(page, 'เลือกเวลา', 0, params.timeSlot));
+      await T('time_slot', '', () => pickDirect(page, 'เลือกเวลา', 0, params.timeSlot));
     } catch (e) {
       // เลือกเวลาไม่ได้ = รอบนี้หายจาก dropdown (DNP ปิดรอบ/ใกล้หมดเวลา) ไม่ใช่ "ระบบช้า" — บอกให้ชัด
       throw new Error(`เลือกรอบเวลา "${params.timeSlot}" ไม่ได้ — รอบนี้อาจปิดรับแล้ว (ใกล้/เลยเวลาสิ้นสุดรอบ) ลองเลือกรอบอื่นนะคะ`);
@@ -306,12 +362,14 @@ async function fillBooking(page, params, opts = {}) {
       if (i > 0) {
         await T('add_vehicle', i + 1, async () => {
           await page.getByRole('button', { name: 'เพิ่มประเภทยานพาหนะ' }).click();
-          // รอช่องคันใหม่ render แทนรอเวลาตายตัว (auto-wait)
+          const tAdd = Date.now();
+          // รอช่องคันใหม่ render แทนรอเวลาตายตัว (auto-wait) + รอพ้นจังหวะ DNP ล้างค่า row ใหม่
           await page.locator('input[placeholder="เลือกประเภทยานพาหนะ"]').nth(i).waitFor({ state: 'visible', timeout: 3000 });
+          await page.waitForTimeout(Math.max(0, ROW_SETTLE_MS - (Date.now() - tAdd)));
         });
       }
       log(`  Vehicle #${i + 1}: ${enVehicle(vehicles[i].match)} (${vehicles[i].plate})`);
-      await T('vehicle_type', i + 1, () => selectOption(page, 'เลือกประเภทยานพาหนะ', i, vehicles[i].match));
+      await T('vehicle_type', i + 1, () => pickDirect(page, 'เลือกประเภทยานพาหนะ', i, vehicles[i].match));
       // พิมพ์ทะเบียนแบบ type จริง เพื่อให้ Vue รับค่า (เหมือนช่องชื่อ)
       const plateInput = page.locator('input[placeholder="เลขทะเบียน"]').nth(i);
       await T('vehicle_plate', i + 1, async () => {
@@ -331,28 +389,48 @@ async function fillBooking(page, params, opts = {}) {
     log(`Travelers: ${total}`);
 
     // กรอกทีละคน — กรอกคนปัจจุบันให้ครบก่อน ค่อยกด "เพิ่มผู้เดินทาง" สร้างคนถัดไป
+    const names = flat.map((t) => (t.nationality === 'Thai' ? thaiNames(1)[0] : interNames(1)[0]));
+    const typeName = async (i) => {
+      const nameInput = page.locator('input[placeholder="ชื่อ - นามสกุล"]').nth(i);
+      await nameInput.click();
+      await nameInput.fill(''); // กันชื่อซ้อน ตอนกรอกซ้ำ field ที่หาย
+      await nameInput.pressSequentially(names[i], { delay: 5 }); // พิมพ์แบบ type จริง Vue ถึงรับค่า (fill เฉยๆ ไม่ trigger)
+      await nameInput.press('Tab');
+    };
+    // เช็คค่า row i ติดจริง — หาย (เครื่องช้า timer ล้าง row มาช้ากว่าที่รอ) = กรอกเฉพาะ field ที่หาย
+    // ต้องครบก่อนกดเพิ่มคนถัดไป ไม่งั้น DNP ไม่ยอมเพิ่มแถว
+    const fixRow = async (i) => {
+      for (let retry = 0; retry < 3; retry++) {
+        const st = await travelerState(page, i);
+        if (st.t && st.n && st.name) return;
+        log(`  Traveler #${i + 1} not committed (${JSON.stringify(st)}) - refilling missing fields`);
+        await page.waitForTimeout(300);
+        if (!st.t) await pickDirect(page, 'ประเภทผู้เดินทาง', i, flat[i].match);
+        if (!st.n) await pickDirect(page, 'สัญชาติ', i, flat[i].nationality, { exact: true });
+        if (!st.name) await typeName(i);
+      }
+      const st = await travelerState(page, i);
+      if (!(st.t && st.n && st.name)) throw new Error(`กรอกผู้เดินทางคนที่ ${i + 1} ไม่สำเร็จ — ระบบอาจช้า ลองกดใหม่นะคะ`);
+    };
+
     for (let i = 0; i < total; i++) {
       prog({ current: i, total, stage: 'traveler' }); // เริ่มกรอกคนที่ i+1 (เสร็จแล้ว i คน)
       if (i > 0) {
         await T('add_traveler', i + 1, async () => {
+          await fixRow(i - 1); // เช็คคนก่อนหน้าอีกรอบก่อนกดเพิ่ม (เครื่องช้า timer ล้างค่าอาจมาหลัง verify)
           await page.getByRole('button', { name: 'เพิ่มผู้เดินทาง' }).click();
-          // รอช่องคนใหม่ render แทนรอเวลาตายตัว (auto-wait)
+          const tAdd = Date.now();
+          // รอช่องคนใหม่ render (auto-wait) + รอพ้นจังหวะ DNP ล้างค่า row ใหม่ (~1.53 วิหลังกด)
           await page.locator('input[placeholder="ประเภทผู้เดินทาง"]').nth(i).waitFor({ state: 'visible', timeout: 3000 });
+          await page.waitForTimeout(Math.max(0, ROW_SETTLE_MS - (Date.now() - tAdd)));
         });
       }
       const t = flat[i];
-      const name = t.nationality === 'Thai' ? thaiNames(1)[0] : interNames(1)[0];
       log(`  Traveler #${i + 1}: ${enTraveler(t.match)} (${t.nationality})`);
-      await T('sel_type', i + 1, () => selectOption(page, 'ประเภทผู้เดินทาง', i, t.match));
-      await T('sel_nat', i + 1, () => selectOption(page, 'สัญชาติ', i, t.nationality, { exact: true }));
-      // พิมพ์ชื่อแบบ type จริง เพื่อให้ Vue รับรู้ค่า (fill เฉยๆ ไม่ trigger)
-      const nameInput = page.locator('input[placeholder="ชื่อ - นามสกุล"]').nth(i);
-      await T('type_name', i + 1, async () => {
-        await nameInput.click();
-        await nameInput.pressSequentially(name, { delay: 5 });
-        await nameInput.press('Tab');
-      });
-      await T('wait200', i + 1, () => page.waitForTimeout(200));
+      await T('sel_type', i + 1, () => pickDirect(page, 'ประเภทผู้เดินทาง', i, t.match));
+      await T('sel_nat', i + 1, () => pickDirect(page, 'สัญชาติ', i, t.nationality, { exact: true }));
+      await T('type_name', i + 1, () => typeName(i));
+      await T('verify', i + 1, () => fixRow(i));
     }
 
     // 6) กรอกครบ — screenshot ต้องทำหลัง revealWindow เสมอ
