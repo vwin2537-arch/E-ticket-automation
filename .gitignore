@@ -9,3 +9,7 @@ dnp-eticket-windows.zip
 *.DS_Store
 ticket-rendered.html
 queq-*
+logs/upload-state.json
+logs/legacy/
+logs/*_usage.csv
+logs/*_timing.csv

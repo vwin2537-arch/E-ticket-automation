@@ -1,11 +1,9 @@
 // logger.js — เก็บ log การใช้งานลง CSV (เปิดด้วย Excel ได้เลย) ไว้ทำรายงานสรุป
 // เขียนต่อท้ายทุกครั้งที่กด "ยืนยัน" ทั้งสำเร็จ/ล้มเหลว ทั้งทดสอบ/จริง
 const fs = require('fs');
-const path = require('path');
 const { VEHICLE_TYPES, TRAVELER_TYPES } = require('./config');
 
-const LOG_DIR = path.join(__dirname, '..', 'logs');
-const LOG_FILE = path.join(LOG_DIR, 'usage.csv');
+const { LOG_DIR, monthFile } = require('./logfiles'); // logs/YYYY-MM_usage.csv เดือนละไฟล์
 
 const HEADERS = ['วันเวลาที่ใช้', 'วันที่จอง', 'รอบเวลา', 'จำนวนคน', 'จำนวนรถ',
   'ประเภทรถ', 'ยอดเงิน(บาท)', 'เวลาที่ใช้(วินาที)', 'โหมด', 'ผล', 'หมายเหตุ',
@@ -41,16 +39,16 @@ function travelerBreakdown(params) {
 
 // อัพเดทแถว header ของไฟล์เดิมให้ตรงกับ HEADERS ปัจจุบัน (กรณีเพิ่ม column ใหม่)
 // แถวข้อมูลเก่ายังอยู่ครบ — column ใหม่จะว่างไว้สำหรับแถวเก่า (Excel เปิดได้ปกติ)
-function ensureHeader() {
+function ensureHeader(file) {
   const want = HEADERS.map(cell).join(',');
-  const raw = fs.readFileSync(LOG_FILE, 'utf8');
+  const raw = fs.readFileSync(file, 'utf8');
   const bom = raw.charCodeAt(0) === 0xFEFF ? '﻿' : '';
   const body = bom ? raw.slice(1) : raw;
   const nl = body.indexOf('\n');
   const firstLine = (nl >= 0 ? body.slice(0, nl) : body).replace(/\r$/, '');
   if (firstLine === want) return; // header ตรงแล้ว ไม่ต้องทำอะไร
   const rest = nl >= 0 ? body.slice(nl + 1) : '';
-  fs.writeFileSync(LOG_FILE, bom + want + '\n' + rest, 'utf8');
+  fs.writeFileSync(file, bom + want + '\n' + rest, 'utf8');
 }
 
 // คำนวณยอดเงินรวมจาก params (คน: ใช้ราคาที่ frontend ส่งมา, รถ: lookup จาก config)
@@ -71,7 +69,8 @@ function calcTotal(params) {
 function logUsage(params, meta = {}) {
   try {
     if (!fs.existsSync(LOG_DIR)) fs.mkdirSync(LOG_DIR, { recursive: true });
-    const isNew = !fs.existsSync(LOG_FILE);
+    const file = monthFile('usage.csv');
+    const isNew = !fs.existsSync(file);
 
     const people = meta.total ?? (params.travelers || []).reduce((s, t) => s + (t.count || 0), 0);
     const vehicles = params.vehicles || [];
@@ -97,13 +96,13 @@ function logUsage(params, meta = {}) {
     // ไฟล์เดิม: อัพเดท header ถ้ามี column ใหม่ (ไม่งั้น column ใหม่จะไม่มีหัวตาราง)
     let out = '';
     if (isNew) out += '﻿' + HEADERS.map(cell).join(',') + '\n';
-    else ensureHeader();
+    else ensureHeader(file);
     out += row + '\n';
-    fs.appendFileSync(LOG_FILE, out, 'utf8');
+    fs.appendFileSync(file, out, 'utf8');
   } catch (e) {
     // เขียน log พลาดต้องไม่ทำให้การจองพัง — แค่เตือนใน console
     console.error('Failed to write log:', e.message);
   }
 }
 
-module.exports = { logUsage, LOG_FILE };
+module.exports = { logUsage };

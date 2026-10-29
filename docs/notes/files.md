@@ -18,12 +18,15 @@
   + `shutdown()` จับ SIGINT/SIGTERM ปิด browser ทั้งหมด (pool+pendingTabs+lastDryTab) ก่อนตาย กัน chromium orphan
 - `src/filelog.js` — `install()` ดักทุก `console.log/error` + `uncaughtException/unhandledRejection` เขียนลง `logs/server.log`
   (เดิม console หายกับหน้าต่างดำ ติดตามบัคไม่ได้). เรียกบรรทัดแรกสุดของ server.js (ก่อน log แรก). crash → log แล้ว `exit(1)` (.bat เห็น+ค้างจอ)
-- `scripts/upload-logs.js` — `uploadLogs()` อ่าน `usage.csv`+`server.log` POST ไป Apps Script. best-effort 10วิ
-  แยกโฟลเดอร์ตามชื่อเครื่อง (os.hostname) รองรับหลายด่าน. เรียกจาก `/api/shutdown` + `RESET-Windows.bat` (CLI). ⚠️ ไม่ส่ง `server-live.log` เดิม (ขยะ)
+- `src/logfiles.js` — ที่อยู่ไฟล์ log **รายเดือน** `logs/YYYY-MM_usage.csv|_timing.csv|_server.log` (single source ให้ logger/timing/filelog/upload-logs) · ⚠️ **ห้ามลบไฟล์เก่าในเครื่อง** (พี่วินเก็บทำผลงานวัดประสิทธิภาพ ~10MB/ปี)
+- `scripts/upload-logs.js` — ส่งแบบเดียวกับแอปมือถือ (29/10/69): ไฟล์รายเดือน → ส่งเฉพาะ byte ใหม่ `mode=append` + `from/to` (Apps Script ข้ามก้อนซ้ำ) ก้อน ≤900KB ตัดที่ขึ้นบรรทัด · state `logs/upload-state.json` · timeout 60วิ
+  Drive = `<ชื่อเครื่อง>/2026-10_usage.csv` 1 ไฟล์/ชนิด/เดือน · ไฟล์สะสมแบบเก่า (`logs/usage.csv` ฯลฯ) ส่งแบบเต็มครั้งสุดท้าย → ย้าย `logs/legacy/until-<วันที่>_*` (legacy พลาดไม่ขวางไฟล์รายเดือน)
+  server ส่งเอง: เปิดระบบ 1 นาที + ทุก 30 นาที + ปุ่มปิด · RESET.bat เรียก CLI · ⚠️ ที่มา: เดิมส่งทั้งก้อนสะสมเฉพาะตอนกดปุ่มปิด → โต 15.6MB ส่งไม่ทัน 10วิ log หยุดขึ้น Drive 27/10/69
+  เทส: `gas-mock` รัน Code.gs จริงบน Drive ปลอม (scratch) — ส่งซ้ำ/คำตอบหาย/เน็ตล่ม/ไฟล์ไทย 3.8MB หลายก้อน ผ่าน
 - `src/log-upload.local.js` — **url+secret ส่ง log (gitignore, repo public ห้ามหลุด)** — config.js `require` override ถ้ามี. ก๊อปไปเครื่องด่านด้วย
 - `apps-script/Code.gs` + `README-deploy.md` — Apps Script web app รับ log เขียนลง Drive (พี่วิน deploy เอง ตั้ง FOLDER_ID+SECRET → URL ใส่ `config.js`)
-  + `mode=append` (27/10/69) รับ log แอปมือถือ `dnp-eticket-mobile` → ต่อท้าย `mobile-<รหัส>/<วันที่>.csv` (จำกัด machine `mobile-*`/ชื่อไฟล์วันที่/≤1MB) · ทาง PC เดิมไม่เปลี่ยน · redeploy = Manage deployments → ✏️ → **New version** (ห้าม New deployment = URL ใหม่)
-- `src/timing.js` — จับเวลาแต่ละ step การกรอกลง `logs/timing.csv` (long format 1แถว/step, group `bookingId`) วิเคราะห์คอขวด
+  + `mode=append` (27/10/69 มือถือ, 29/10/69 +PC) ต่อท้าย `mobile-<รหัส>/<วันที่>.csv` และ `<เครื่อง>/YYYY-MM_<ชนิด>` (ชื่อไฟล์ตาม `APPEND_FILE_RE`/≤1MB) · `from/to` + Script Properties `sent:<เครื่อง>/<ไฟล์>` กันต่อท้ายซ้ำ · ทาง PC เดิมไม่เปลี่ยน · redeploy = Manage deployments → ✏️ → **New version** (ห้าม New deployment = URL ใหม่)
+- `src/timing.js` — จับเวลาแต่ละ step ของการกรอก → **1 แถว/ใบ** `รวม(วินาที)` + `แยกขั้น` (`acquire0.0 sel_type0.8 ...` รวมทุกคน) ลง `logs/YYYY-MM_timing.csv` (เดิม long format 1แถว/step โต ~100KB/วัน → เปลี่ยน 29/10/69)
   `createCollector()` → ส่งเข้า `fillBooking(opts.timing)` (helper `T()` no-op ถ้าไม่ส่ง) + server วัด `acquire`. gitignore + ส่ง Drive
 - `scripts/diag-selectopt.js` — debug `selectOption` แยกเวลา phase + นับ attempt + ดู network (อ่านอย่างเดียว ไม่จอง) `node scripts/diag-selectopt.js [YYYY-MM-DD]`
 - `src/logger.js` — เขียน log การใช้งานลง `logs/usage.csv` (logUsage) — เรียกจาก server.js ทุกครั้งที่จอง

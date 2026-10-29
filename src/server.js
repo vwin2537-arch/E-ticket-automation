@@ -174,7 +174,20 @@ const PORT = process.env.PORT || 5179;
 app.listen(PORT, () => {
   console.log(`\nErawan booking ready -> http://localhost:${PORT}\n   (Press Ctrl+C to stop)\n`);
   pool.init(console.log); // เริ่มอุ่นเครื่อง warm pool ทันที (เปิดแท็บกดการ์ด+เลือกวันนี้รอไว้)
+  // ส่ง log ขึ้น Drive เอง ไม่ต้องรอ จนท.กดปุ่มปิด (เดิมส่งเฉพาะปุ่มปิด/RESET — วันไหนปิดเครื่องตรงๆ log ไม่ขึ้นเลย)
+  // ส่งเฉพาะส่วนใหม่ของไฟล์รายเดือน (ก้อนละไม่กี่ KB) → เปิดระบบ 1 นาที + ทุก 30 นาที · ส่งไม่ผ่าน = รอบหน้าต่อจากจุดเดิม
+  setTimeout(() => {
+    autoUpload();
+    setInterval(autoUpload, 30 * 60 * 1000).unref();
+  }, 60 * 1000).unref();
 });
+
+let autoUploading = false;
+async function autoUpload() {
+  if (autoUploading) return; // รอบก่อนยังไม่จบ (เน็ตช้า) — ข้าม
+  autoUploading = true;
+  try { await uploadLogs(); } catch {} finally { autoUploading = false; }
+}
 
 // graceful shutdown — ปิด browser ทั้งหมด (warm pool + ใบจริง/ทดสอบที่ค้างรอจ่าย) ก่อนตาย
 // กัน chromium orphan ค้างกิน RAM สะสมจากการปิด-เปิดโปรแกรมหลายรอบที่เครื่องด่าน

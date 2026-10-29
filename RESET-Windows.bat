@@ -17,7 +17,7 @@ REM     Match command line containing "ms-playwright" so normal Chrome is never 
 echo   [2/4] Closing stuck bot browsers (Playwright only)...
 powershell -NoProfile -Command "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*ms-playwright*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }" >nul 2>&1
 
-REM --- 3) Send logs to Google Drive (best-effort, 10s timeout) ---
+REM --- 3) Send logs to Google Drive (best-effort, 60s timeout) ---
 echo   [3/4] Sending logs to Google Drive...
 node scripts\upload-logs.js
 

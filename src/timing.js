@@ -1,12 +1,11 @@
 // timing.js — จับเวลาแต่ละ step ของการกรอกฟอร์ม เพื่อหา "คอขวด" ว่าเวลาหมดไปกับอะไร
-// long format: 1 แถว = 1 step ของ 1 booking → รองรับผู้เดินทางกี่คนก็ได้ (group ด้วย bookingId)
-// เปิดด้วย Excel/pivot ได้เลย. ไม่แตะ logic การกรอก — แค่คร่อม Date.now() วัดเวลา (overhead ~0)
+// 1 แถว = 1 booking: รวมวินาที + แยกขั้น (รวมทุกคน) เช่น "acquire0.0 time_slot0.1 sel_nat1.2 ..." (แบบ log มือถือ)
+// เดิม long format 1 แถว/step/คน → ไฟล์โต ~100KB/วัน (7.9MB ใน 4 เดือน) · วิเคราะห์คอขวดเสร็จแล้ว (28/10/69) ไม่ต้องละเอียดขนาดนั้น
+// ไม่แตะ logic การกรอก — แค่คร่อม Date.now() วัดเวลา (overhead ~0)
 const fs = require('fs');
-const path = require('path');
+const { LOG_DIR, monthFile } = require('./logfiles'); // logs/YYYY-MM_timing.csv เดือนละไฟล์
 
-const LOG_DIR = path.join(__dirname, '..', 'logs');
-const LOG_FILE = path.join(LOG_DIR, 'timing.csv');
-const HEADERS = ['เวลา', 'bookingId', 'โหมด', 'รวมคน', 'step', 'คนที่', 'ms'];
+const HEADERS = ['เวลา', 'bookingId', 'โหมด', 'รวมคน', 'รวม(วินาที)', 'แยกขั้น(วินาที)'];
 
 // escape ค่าให้ปลอดภัยใน CSV (เหมือน logger.js)
 const cell = (v) => {
@@ -43,19 +42,21 @@ function writeTiming(meta, rows) {
   try {
     if (!rows.length) return;
     if (!fs.existsSync(LOG_DIR)) fs.mkdirSync(LOG_DIR, { recursive: true });
-    const isNew = !fs.existsSync(LOG_FILE);
-    const stamp = localStamp(new Date());
+    const file = monthFile('timing.csv');
+    const isNew = !fs.existsSync(file);
     const mode = meta.dryRun ? 'ทดสอบ' : 'จริง';
+    const byStep = new Map(); // รวม ms ต่อ step ตามลำดับที่เจอครั้งแรก
+    for (const r of rows) byStep.set(r.step, (byStep.get(r.step) || 0) + r.ms);
+    const sec = (ms) => (ms / 1000).toFixed(1);
+    const totalMs = rows.reduce((s, r) => s + r.ms, 0);
+    const steps = [...byStep].map(([k, ms]) => `${k}${sec(ms)}`).join(' ');
     let out = '';
     if (isNew) out += '﻿' + HEADERS.map(cell).join(',') + '\n'; // BOM ให้ Excel อ่านไทยไม่เพี้ยน
-    for (const r of rows) {
-      out += [stamp, meta.bookingId, mode, meta.total ?? '', r.step, r.idx ?? '', r.ms]
-        .map(cell).join(',') + '\n';
-    }
-    fs.appendFileSync(LOG_FILE, out, 'utf8');
+    out += [localStamp(new Date()), meta.bookingId, mode, meta.total ?? '', sec(totalMs), steps].map(cell).join(',') + '\n';
+    fs.appendFileSync(file, out, 'utf8');
   } catch (e) {
     console.error('Failed to write timing:', e.message); // เขียนพลาดต้องไม่ทำให้จองพัง
   }
 }
 
-module.exports = { createCollector, writeTiming, LOG_FILE };
+module.exports = { createCollector, writeTiming };

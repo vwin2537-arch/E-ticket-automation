@@ -3,10 +3,7 @@
 // คู่กับ usage.csv (log การจอง) → server.log = log การทำงาน/crash ของ server
 // install() เรียกครั้งเดียวตอน server start (ก่อน log แรก) — โชว์บนจอเหมือนเดิม + ต่อท้ายไฟล์ไปด้วย
 const fs = require('fs');
-const path = require('path');
-
-const LOG_DIR = path.join(__dirname, '..', 'logs');
-const SERVER_LOG = path.join(LOG_DIR, 'server.log');
+const { LOG_DIR, monthFile } = require('./logfiles'); // logs/YYYY-MM_server.log เดือนละไฟล์
 
 // วันเวลาท้องถิ่น YYYY-MM-DD HH:mm:ss (ฟอร์แมตเดียวกับ logger.js)
 function ts() {
@@ -30,7 +27,7 @@ function install() {
 
   const orig = { log: console.log.bind(console), error: console.error.bind(console) };
   const write = (level, args) => {
-    try { fs.appendFileSync(SERVER_LOG, `[${ts()}] ${level} ${args.map(fmtArg).join(' ')}\n`); } catch {}
+    try { fs.appendFileSync(monthFile('server.log'), `[${ts()}] ${level} ${args.map(fmtArg).join(' ')}\n`); } catch {}
   };
   console.log = (...a) => { orig.log(...a); write('INFO ', a); };
   console.error = (...a) => { orig.error(...a); write('ERROR', a); };
@@ -46,4 +43,4 @@ function install() {
   process.on('unhandledRejection', onCrash('unhandledRejection'));
 }
 
-module.exports = { install, SERVER_LOG };
+module.exports = { install };
