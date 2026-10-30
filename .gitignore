@@ -13,3 +13,4 @@ logs/upload-state.json
 logs/legacy/
 logs/*_usage.csv
 logs/*_timing.csv
+logs/exp-hold-*/
