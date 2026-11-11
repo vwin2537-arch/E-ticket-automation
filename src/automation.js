@@ -213,12 +213,18 @@ function bookDate() {
   return todayISO();
 }
 
+// ⚠️ ชั่วคราว (11/11/69) — ใบ *.dnp.go.th หมดอายุ 11/11 07:00 กรมฯ แจ้งให้ใช้ไปก่อนระหว่างต่ออายุ
+// ยอมเฉพาะกุญแจของใบนี้ (SPKI SHA-256) — ใบปลอม/เว็บอื่นที่ cert เสีย ยังโดนบล็อก (เทส DNP จริงผ่าน)
+// กรมต่อใบใหม่แล้ว flag นี้ไม่มีผล · ลบทิ้งรอบอัปเดตหน้า
+const TEMP_CERT_ARGS = ['--ignore-certificate-errors-spki-list=AXljCTFCnAh0aQUkMZHxt3xlKn5tWDxe1Q08kOlM8qk='];
+
 // เปิด chromium + flags กัน throttle, Windows ดันนอกจอ (ซ่อนสนิท) — ดู note บน tuckWindow
 function launchBrowser(headless = false) {
   const isWin = process.platform === 'win32';
   return chromium.launch({
     headless,
-    args: headless ? [] : [
+    args: headless ? TEMP_CERT_ARGS : [
+      ...TEMP_CERT_ARGS,
       '--disable-backgrounding-occluded-windows',
       '--disable-renderer-backgrounding',
       '--disable-background-timer-throttling',
@@ -494,7 +500,7 @@ async function runBooking(params, opts = {}) {
 async function checkLogin() {
   let browser;
   try {
-    browser = await chromium.launch({ headless: true });
+    browser = await chromium.launch({ headless: true, args: TEMP_CERT_ARGS });
     const context = await browser.newContext({ storageState: STATE_PATH });
     const page = await context.newPage();
     try {
