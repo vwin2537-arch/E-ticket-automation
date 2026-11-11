@@ -66,7 +66,7 @@ session อยู่ได้นานเป็นปี (refresh_token) → **�
 | รอบเวลา / วันเป้าหมาย / ใบดักรอจ่าย | `docs/notes/booking-rules.md` | `readTimeSlots` (is-disabled), วันนี้เสมอ + ปุ่มพรุ่งนี้, `syncGoButton`, `pendingTabs`/`MAX_PENDING`/`prunePending` |
 | ซ่อน/เด้งหน้าต่าง | `docs/notes/window-hiding.md` | Windows -32000 / Mac tuck, `revealWindow` ลำดับ+race, popup จ่ายเงินดึงกลับเข้าจอ, 3 วิธีที่ลองแล้วไม่ได้ |
 | ความเร็วการกรอก | `docs/notes/speed.md` | `pickDirect` + `ROW_SETTLE_MS` + `fixRow` (28/10/69), timing.csv, สิ่งที่เร่งไม่ได้ |
-| เน็ตวูบ / แบนเนอร์ login หลอก | `docs/notes/network.md` | `gotoWithRetry`, `POOL_SIZE=1`, `checkLogin` in/out/neterror |
+| เน็ตวูบ / แบนเนอร์ login หลอก / ใบรับรอง DNP | `docs/notes/network.md` | `gotoWithRetry`, `POOL_SIZE=1`, `checkLogin` in/out/neterror, `TEMP_CERT_ARGS` (ใบ DNP หมดอายุ 11/11/69 ชั่วคราว) |
 
 ## ⚠️ กับดักที่ทำพังบ่อย (รายละเอียดอยู่ไฟล์ที่ชี้)
 
@@ -78,6 +78,7 @@ session อยู่ได้นานเป็นปี (refresh_token) → **�
 - **`revealWindow` ลำดับ minimize→normal→maximized + retry** · screenshot ต้องหลัง reveal · อย่าลองบล็อกรูป/minimize/headless handoff ซ้ำ → `window-hiding.md`
 - **DNP ล้างค่า row ใหม่ที่ ~1.53 วิหลังกด "เพิ่ม..."** — ใส่ก่อนนั้นหาย → `pickDirect` หลัง `ROW_SETTLE_MS` + `fixRow` → `speed.md`
 - **`neterror` ≠ ออกจากระบบ** — อย่าบล็อกปุ่มจองตอนเน็ตวูบ → `network.md`
+- **ทุกจุดที่ `chromium.launch` (รวม `scripts/login.js`) ต้องได้ `TEMP_CERT_ARGS`** จนกว่ากรมต่อใบ DNP — ลืมจุดเดียว = ใช้ไม่ได้ทั้งเส้น → `network.md`
 - **receipt-inject เป็นสำเนา** ของ `~/dnp-eticket-receipt` · Apps Script redeploy = New version ห้าม New deployment → `files.md`
 
 ## Persona
