@@ -6,7 +6,8 @@ const HOME_URL = 'https://e-ticket.dnp.go.th/homePage';
 const STATE_PATH = path.join(__dirname, '..', 'auth', 'storageState.json');
 
 (async () => {
-  const browser = await chromium.launch({ headless: false });
+  // ⚠️ ชั่วคราว (11/11/69) ใบ DNP หมดอายุ — ยอมเฉพาะกุญแจใบนี้ (เหมือน TEMP_CERT_ARGS ใน src/automation.js) ลบเมื่อกรมต่อใบแล้ว
+  const browser = await chromium.launch({ headless: false, args: ['--ignore-certificate-errors-spki-list=AXljCTFCnAh0aQUkMZHxt3xlKn5tWDxe1Q08kOlM8qk='] });
   const context = await browser.newContext();
   const page = await context.newPage();
 
